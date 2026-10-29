@@ -117,7 +117,11 @@ export const api = {
     }),
 
   // Students
-  getStudentsByFilter: (branch, year, section) =>
+    // Get students
+  getStudentsList: () =>
+    request('/students'),
+  
+   getStudentsByFilter: (branch, year, section) =>
     request(
       `/students?${new URLSearchParams({
         ...(branch ? { branch } : {}),
@@ -125,6 +129,13 @@ export const api = {
         ...(section ? { section } : {}),
       })}`
     ),
+
+  // Create one or multiple students
+  createStudentsBulk: (students) =>
+    request('/students/bulk-students', {
+      method: 'POST',
+      body: JSON.stringify({ students }),
+    }),
 
   // Chat sessions
   getSession: (activityId, studentId) =>
