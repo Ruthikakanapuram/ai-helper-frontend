@@ -136,7 +136,24 @@ export const api = {
       method: 'POST',
       body: json(body),
     }),
+  // Teacher activity monitoring
+  getActivityMonitor: (activityId) =>
+    request(`/activities/${encodeURIComponent(activityId)}/monitor`),
 
+  // Paginated chat history for teacher monitoring
+  getSessionChatHistory: (sessionId, { limit = 30, beforeId } = {}) => {
+    const params = new URLSearchParams({
+      limit: String(limit),
+    });
+
+    if (beforeId) {
+      params.set('beforeId', String(beforeId));
+    }
+
+    return request(
+      `/chat-messages/session/${encodeURIComponent(sessionId)}/history?${params.toString()}`
+    );
+  },
 
 updateActivityStatus: (id, status) =>
   request(`/activities/${id}/status`, {
