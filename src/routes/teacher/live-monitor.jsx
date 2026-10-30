@@ -22,9 +22,14 @@ import {
   ArrowDown,
   ArrowLeft,
   Bot,
+  ChevronDown,
+  ChevronUp,
   Clock,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   Play,
+  Radio,
   RefreshCw,
   Search,
   Square,
@@ -47,7 +52,6 @@ import { useActivitySocket } from '../../features/chat/useActivitySocket';
 import { remaining, mmss } from '../../lib/utils';
 
 import {
-  Badge,
   Button,
   ErrorState,
   Loading,
@@ -182,27 +186,14 @@ function initials(name) {
   return (first + last).toUpperCase();
 }
 
-function Avatar({ student, size = 'md', showDot = false }) {
+function Avatar({ student, size = 'md' }) {
   const dimension = size === 'sm' ? 'h-8 w-8 text-xs' : 'h-10 w-10 text-sm';
-  const active = ['ACTIVE', 'IN_PROGRESS', 'STARTED'].includes(
-    getStudentStatus(student),
-  );
 
   return (
-    <div className="relative shrink-0">
-      <div
-        className={`flex items-center justify-center rounded-full font-semibold ${dimension} ${avatarColor(student.studentId ?? student.name)}`}
-      >
-        {initials(student.name)}
-      </div>
-
-      {showDot && (
-        <span
-          className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white dark:border-slate-950 ${
-            active ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
-          }`}
-        />
-      )}
+    <div
+      className={`flex shrink-0 items-center justify-center rounded-full font-semibold ${dimension} ${avatarColor(student.studentId ?? student.name)}`}
+    >
+      {initials(student.name)}
     </div>
   );
 }
@@ -221,29 +212,50 @@ function Chip({ icon: Icon, label, children }) {
   );
 }
 
+// "Published" is shown as "Live" while the activity is running.
+function ActivityStatus({ status }) {
+  if (['PUBLISHED', 'ACTIVE'].includes(status)) {
+    return (
+      <span className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+        </span>
+        Live
+      </span>
+    );
+  }
+
+  const label =
+    {
+      CLOSED: 'Closed',
+      STOPPED: 'Closed',
+      DRAFT: 'Draft',
+      SCHEDULED: 'Scheduled',
+      ARCHIVED: 'Archived',
+    }[status] || status;
+
+  return (
+    <span className="font-semibold text-slate-800 dark:text-slate-200">
+      {label}
+    </span>
+  );
+}
+
 function ActivityHeader({
   activity,
   seconds,
   ended,
-  connectionStatus,
   onStart,
   onStop,
   isStarting,
   isStopping,
 }) {
-  const status = activity.status;
+  const status = ended ? 'CLOSED' : activity.status;
 
-  const canStart = ['SCHEDULED', 'DRAFT'].includes(status);
-  const isRunning = ['PUBLISHED', 'ACTIVE'].includes(status) && !ended;
+  const canStart = ['SCHEDULED', 'DRAFT'].includes(activity.status);
+  const isRunning = ['PUBLISHED', 'ACTIVE'].includes(activity.status) && !ended;
   const canStop = isRunning;
-
-  const isConnected = connectionStatus === 'connected';
-
-  const totalSeconds = (activity.duration || 0) * 60;
-  const percent =
-    totalSeconds > 0
-      ? Math.max(0, Math.min(100, (seconds / totalSeconds) * 100))
-      : 0;
 
   const timeTone = !isRunning
     ? 'text-slate-800 dark:text-slate-200'
@@ -252,13 +264,6 @@ function ActivityHeader({
       : seconds <= 300
         ? 'text-amber-600 dark:text-amber-400'
         : 'text-slate-800 dark:text-slate-200';
-
-  const barTone =
-    seconds <= 60
-      ? 'bg-red-500'
-      : seconds <= 300
-        ? 'bg-amber-500'
-        : 'bg-blue-600';
 
   return (
     <header className="shrink-0 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
@@ -276,13 +281,9 @@ function ActivityHeader({
           </Link>
 
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100 md:text-lg">
-                {getActivityTitle(activity)}
-              </h1>
-
-              <Badge status={ended ? 'CLOSED' : status} />
-            </div>
+            <h1 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100 md:text-lg">
+              {getActivityTitle(activity)}
+            </h1>
 
             <p className="mt-0.5 max-w-[60ch] truncate text-xs text-slate-500">
               {activity.topic || 'Activity monitoring'}
@@ -291,13 +292,17 @@ function ActivityHeader({
           </div>
         </div>
 
-        {/* Info + controls */}
+        {/* Status, time, students + controls */}
 
         <div className="flex flex-wrap items-center gap-2 md:gap-3">
+          <Chip icon={Radio} label="Status">
+            <ActivityStatus status={status} />
+          </Chip>
+
           <Chip icon={Clock} label="Time left">
             <span className={`font-semibold tabular-nums ${timeTone}`}>
               {mmss(
-                ['SCHEDULED', 'DRAFT'].includes(status)
+                ['SCHEDULED', 'DRAFT'].includes(activity.status)
                   ? (activity.duration || 0) * 60
                   : seconds,
               )}
@@ -309,30 +314,6 @@ function ActivityHeader({
               {activity.studentCount ?? 0}
             </span>
           </Chip>
-
-          <div
-            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-medium ${
-              isConnected
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300'
-                : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900'
-            }`}
-            title={`Connection: ${connectionStatus}`}
-          >
-            <span className="relative flex h-2 w-2">
-              {isConnected && (
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              )}
-              <span
-                className={`relative inline-flex h-2 w-2 rounded-full ${
-                  isConnected ? 'bg-emerald-500' : 'bg-slate-400'
-                }`}
-              />
-            </span>
-
-            <span className="capitalize">
-              {isConnected ? 'Live' : connectionStatus}
-            </span>
-          </div>
 
           {canStart && (
             <Button onClick={onStart} disabled={isStarting || isStopping}>
@@ -387,23 +368,172 @@ function ActivityHeader({
         </div>
       </div>
 
-      {/* Time-remaining progress bar */}
-
-      {isRunning && totalSeconds > 0 && (
-        <div className="h-1 w-full bg-slate-100 dark:bg-slate-900">
-          <div
-            className={`h-full transition-all duration-1000 ease-linear ${barTone}`}
-            style={{ width: `${percent}%` }}
-          />
-        </div>
-      )}
-
-      {ended && (
+      {/* {ended && (
         <div className="border-t border-slate-100 bg-slate-50 px-6 py-1.5 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900">
           Activity ended. All student conversations are available for review.
         </div>
-      )}
+      )} */}
     </header>
+  );
+}
+
+// ------------------------------------------------------
+// Sidebar layout: drag to resize + collapse
+// ------------------------------------------------------
+
+const SIDEBAR_MIN = 240;
+const SIDEBAR_MAX = 480;
+const SIDEBAR_DEFAULT = 320;
+const SIDEBAR_RAIL = 72;
+const SIDEBAR_STORAGE_KEY = 'teacher-monitor-sidebar';
+
+function clampWidth(value) {
+  return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(value)));
+}
+
+function readSidebarPrefs() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SIDEBAR_STORAGE_KEY) || 'null');
+
+    if (saved) {
+      return {
+        width: clampWidth(Number(saved.width) || SIDEBAR_DEFAULT),
+        collapsed: Boolean(saved.collapsed),
+      };
+    }
+  } catch {
+    // ignore storage errors
+  }
+
+  return { width: SIDEBAR_DEFAULT, collapsed: false };
+}
+
+function useSidebarLayout() {
+  const [prefs, setPrefs] = useState(readSidebarPrefs);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify(prefs));
+    } catch {
+      // ignore storage errors
+    }
+  }, [prefs]);
+
+  const setWidth = useCallback(
+    (width) => setPrefs((p) => ({ ...p, width: clampWidth(width) })),
+    [],
+  );
+
+  const toggleCollapsed = useCallback(
+    () => setPrefs((p) => ({ ...p, collapsed: !p.collapsed })),
+    [],
+  );
+
+  return {
+    width: prefs.width,
+    collapsed: prefs.collapsed,
+    setWidth,
+    toggleCollapsed,
+  };
+}
+
+// Resizing/collapsing only applies side-by-side (md and up).
+function useIsDesktop() {
+  const query = '(min-width: 768px)';
+
+  const [matches, setMatches] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const onChange = (event) => setMatches(event.matches);
+
+    setMatches(media.matches);
+    media.addEventListener('change', onChange);
+
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  return matches;
+}
+
+function SidebarResizer({ width, onResize, onReset }) {
+  const [dragging, setDragging] = useState(false);
+  const start = useRef({ x: 0, width: 0 });
+
+  // Keep the cursor and text selection sane while dragging.
+  useEffect(() => {
+    if (!dragging) return undefined;
+
+    const previousCursor = document.body.style.cursor;
+    const previousSelect = document.body.style.userSelect;
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousSelect;
+    };
+  }, [dragging]);
+
+  const onPointerDown = (event) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    start.current = { x: event.clientX, width };
+    setDragging(true);
+  };
+
+  const onPointerMove = (event) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    onResize(start.current.width + (event.clientX - start.current.x));
+  };
+
+  const endDrag = (event) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    setDragging(false);
+  };
+
+  const onKeyDown = (event) => {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      onResize(width - 16);
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      onResize(width + 16);
+    }
+  };
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize student list"
+      aria-valuemin={SIDEBAR_MIN}
+      aria-valuemax={SIDEBAR_MAX}
+      aria-valuenow={width}
+      tabIndex={0}
+      title="Drag to resize · double-click to reset"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onDoubleClick={onReset}
+      onKeyDown={onKeyDown}
+      className="group relative z-10 -ml-1 hidden w-2 shrink-0 cursor-col-resize touch-none select-none outline-none md:block"
+    >
+      <span
+        className={`absolute inset-y-0 left-1/2 -translate-x-1/2 transition-all ${
+          dragging
+            ? 'w-0.5 bg-blue-500'
+            : 'w-px bg-transparent group-hover:w-0.5 group-hover:bg-blue-400 group-focus-visible:w-0.5 group-focus-visible:bg-blue-500'
+        }`}
+      />
+    </div>
   );
 }
 
@@ -411,9 +541,21 @@ function ActivityHeader({
 // Student sidebar
 // ------------------------------------------------------
 
-function StudentSidebar({ students, selectedStudentId, onSelect }) {
+// How many students are listed before the "+ N more" row.
+const VISIBLE_LIMIT = 5;
+
+function StudentSidebar({
+  students,
+  selectedStudentId,
+  onSelect,
+  width,
+  collapsed: panelCollapsed,
+  isDesktop,
+  onToggleCollapsed,
+}) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
+  const [expanded, setExpanded] = useState(false);
 
   const startedCount = students.filter((s) => s.hasStarted).length;
   const waitingCount = students.length - startedCount;
@@ -434,26 +576,109 @@ function StudentSidebar({ students, selectedStudentId, onSelect }) {
     });
   }, [students, query, filter]);
 
+  // Collapse long lists to the first few students; searching always shows
+  // every match, and the selected student is never hidden.
+  const isSearching = query.trim().length > 0;
+  const collapsed = !expanded && !isSearching && visible.length > VISIBLE_LIMIT;
+
+  const shown = useMemo(() => {
+    if (!collapsed) return visible;
+
+    const head = visible.slice(0, VISIBLE_LIMIT);
+    const selected = visible.find(
+      (s) => String(s.studentId) === String(selectedStudentId),
+    );
+
+    if (selected && !head.includes(selected)) head.push(selected);
+
+    return head;
+  }, [collapsed, visible, selectedStudentId]);
+
+  const hiddenCount = visible.length - shown.length;
+
   const filters = [
     { id: 'all', label: 'All', count: students.length },
     { id: 'started', label: 'Started', count: startedCount },
     { id: 'waiting', label: 'Waiting', count: waitingCount },
   ];
 
+  // Collapsed: a narrow rail with just the avatars.
+  if (isDesktop && panelCollapsed) {
+    return (
+      <aside
+        style={{ width: SIDEBAR_RAIL }}
+        className="flex min-h-0 shrink-0 flex-col items-center border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
+      >
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          aria-label="Expand student list"
+          title="Expand student list"
+          className="my-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+        >
+          <PanelLeftOpen size={18} />
+        </button>
+
+        <div className="min-h-0 w-full flex-1 overflow-y-auto pb-3">
+          <div className="flex flex-col items-center gap-2">
+            {students.map((student) => {
+              const selected =
+                String(selectedStudentId) === String(student.studentId);
+
+              return (
+                <button
+                  key={student.studentId}
+                  type="button"
+                  onClick={() => onSelect(student.studentId)}
+                  aria-current={selected}
+                  title={`${student.name} · ${student.rollNumber}`}
+                  className={`rounded-full p-0.5 transition ${
+                    selected
+                      ? 'ring-2 ring-blue-600'
+                      : 'hover:ring-2 hover:ring-slate-300 dark:hover:ring-slate-700'
+                  }`}
+                >
+                  <Avatar student={student} size="sm" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </aside>
+    );
+  }
+
   return (
-    <aside className="flex max-h-[38vh] min-h-0 w-full shrink-0 flex-col border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 md:max-h-none md:w-[320px] md:border-b-0 md:border-r">
+    <aside
+      style={isDesktop ? { width } : undefined}
+      className="flex max-h-[38vh] min-h-0 w-full shrink-0 flex-col border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 md:max-h-none md:border-b-0 md:border-r"
+    >
 
       {/* Heading, search and filters */}
 
       <div className="shrink-0 space-y-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
             Students
           </h2>
 
-          <span className="text-xs text-slate-500">
-            {startedCount} of {students.length} started
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-slate-500">
+              {startedCount} of {students.length} started
+            </span>
+
+            {isDesktop && (
+              <button
+                type="button"
+                onClick={onToggleCollapsed}
+                aria-label="Collapse student list"
+                title="Collapse student list"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+              >
+                <PanelLeftClose size={16} />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="relative">
@@ -493,7 +718,7 @@ function StudentSidebar({ students, selectedStudentId, onSelect }) {
       {/* List: only this section scrolls */}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {visible.map((student) => {
+        {shown.map((student) => {
           const selected =
             String(selectedStudentId) === String(student.studentId);
 
@@ -509,7 +734,7 @@ function StudentSidebar({ students, selectedStudentId, onSelect }) {
                   : 'border-l-transparent hover:bg-slate-50 dark:hover:bg-slate-900'
               }`}
             >
-              <Avatar student={student} showDot />
+              <Avatar student={student} />
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-200">
@@ -533,6 +758,37 @@ function StudentSidebar({ students, selectedStudentId, onSelect }) {
             </button>
           );
         })}
+
+        {collapsed && hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="flex w-full items-center gap-3 border-b border-l-[3px] border-b-slate-100 border-l-transparent px-3 py-3 text-left transition hover:bg-slate-50 dark:border-b-slate-900 dark:hover:bg-slate-900"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+              <ChevronDown size={18} />
+            </span>
+
+            <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+              + {hiddenCount} more
+            </span>
+
+            <span className="ml-auto text-xs text-blue-600 dark:text-blue-400">
+              Show all
+            </span>
+          </button>
+        )}
+
+        {expanded && !isSearching && visible.length > VISIBLE_LIMIT && (
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="flex w-full items-center justify-center gap-1.5 px-3 py-3 text-xs font-medium text-blue-600 transition hover:bg-slate-50 dark:text-blue-400 dark:hover:bg-slate-900"
+          >
+            <ChevronUp size={14} />
+            Show less
+          </button>
+        )}
 
         {visible.length === 0 && (
           <div className="p-8 text-center">
@@ -1015,14 +1271,8 @@ export function TeacherMonitor() {
     };
   }, []);
 
-  // Update timer.
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, []);
+  const isDesktop = useIsDesktop();
+  const sidebar = useSidebarLayout();
 
   // Activity details.
   const activityQuery = useQuery({
@@ -1038,6 +1288,22 @@ export function TeacherMonitor() {
 
   const activity = activityQuery.data;
   const students = monitorQuery.data?.students || [];
+
+  // The clock only ticks while the activity is live, so it stops the moment
+  // the teacher stops (or the activity closes).
+  const isLive = ['PUBLISHED', 'ACTIVE'].includes(activity?.status);
+
+  useEffect(() => {
+    if (!isLive) return undefined;
+
+    setNow(Date.now());
+
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isLive]);
 
   // Automatically select the first student.
   useEffect(() => {
@@ -1115,7 +1381,8 @@ export function TeacherMonitor() {
     [activityId, selectedStudent?.sessionId],
   );
 
-  const connectionStatus = useActivitySocket(activityId, handleSocketEvent);
+  // Keeps the live updates running (no connection indicator is shown).
+  useActivitySocket(activityId, handleSocketEvent);
 
   // Start activity.
   const start = useMutation({
@@ -1189,11 +1456,14 @@ export function TeacherMonitor() {
     );
   }
 
-  const seconds = remaining(activity.startedAt, activity.duration, now);
+  const remainingSeconds = remaining(activity.startedAt, activity.duration, now);
 
   const ended =
     ['CLOSED', 'STOPPED'].includes(activity.status) ||
-    (['PUBLISHED', 'ACTIVE'].includes(activity.status) && seconds === 0);
+    (['PUBLISHED', 'ACTIVE'].includes(activity.status) && remainingSeconds === 0);
+
+  // A stopped/closed activity always shows 00:00.
+  const seconds = ended ? 0 : remainingSeconds;
 
   return (
     <div className="flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
@@ -1205,7 +1475,6 @@ export function TeacherMonitor() {
         }}
         seconds={seconds}
         ended={ended}
-        connectionStatus={connectionStatus}
         onStart={() => start.mutate()}
         onStop={() => stop.mutate()}
         isStarting={start.isPending}
@@ -1220,7 +1489,19 @@ export function TeacherMonitor() {
           students={students}
           selectedStudentId={selectedStudentId}
           onSelect={(id) => setSelectedStudentId(String(id))}
+          width={sidebar.width}
+          collapsed={sidebar.collapsed}
+          isDesktop={isDesktop}
+          onToggleCollapsed={sidebar.toggleCollapsed}
         />
+
+        {isDesktop && !sidebar.collapsed && (
+          <SidebarResizer
+            width={sidebar.width}
+            onResize={sidebar.setWidth}
+            onReset={() => sidebar.setWidth(SIDEBAR_DEFAULT)}
+          />
+        )}
 
         <ChatPanel
           key={selectedStudent?.studentId ?? 'no-student'}
