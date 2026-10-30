@@ -85,6 +85,37 @@ async function request(path, init = {}) {
 
 const json = (body) => JSON.stringify(body);
 
+export function normalizeActivity(activity) {
+  return {
+    ...activity,
+
+    id: String(activity.id),
+
+    // Backend title -> Frontend name
+    name: activity.title ?? activity.name ?? '',
+
+    topic: activity.topic ?? '',
+
+    description: activity.description ?? '',
+
+    duration: activity.duration ?? 30,
+
+    scheduledDate: activity.scheduledDate ?? null,
+
+    startedAt: activity.startedAt ?? null,
+
+    endedAt: activity.endedAt ?? null,
+
+    status: activity.status,
+
+    studentIds: Array.isArray(activity.studentIds)
+      ? activity.studentIds.map(String)
+      : [],
+
+    createdAt: activity.createdAt,
+  };
+}
+
 export const api = {
   // Authentication
   login: (username, password) =>
@@ -106,15 +137,29 @@ export const api = {
       body: json(body),
     }),
 
-  startActivity: (id) =>
-    request(`/activities/${id}/start`, {
-      method: 'POST',
-    }),
 
-  stopActivity: (id) =>
-    request(`/activities/${id}/stop`, {
-      method: 'POST',
+updateActivityStatus: (id, status) =>
+  request(`/activities/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  }),
+
+startActivity: (id) =>
+  request(`/activities/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      status: 'PUBLISHED',
     }),
+  }),
+
+stopActivity: (id) =>
+  request(`/activities/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      status: 'CLOSED',
+    }),
+  }),
+
 
   // Students
     // Get students
@@ -138,17 +183,22 @@ export const api = {
     }),
 
   // Chat sessions
-  getSession: (activityId, studentId) =>
-    request(
-      `/activities/${activityId}/sessions/${studentId}`
-    ),
 
-  createSession: (activityId, studentId) =>
-    request(`/activities/${activityId}/sessions`, {
-      method: 'POST',
-      body: json({ studentId }),
+
+// Create the session on first entry.
+// Repeated calls return the existing session.
+enterActivity: (activityId) =>
+  request('/chat-sessions', {
+    method: 'POST',
+    body: JSON.stringify({
+      activityId: Number(activityId),
     }),
+  }),
 
+// Confirmed only if your ChatSessionsController
+// exposes GET /chat-sessions/:id.
+getChatSessionById: (sessionId) =>
+  request(`/chat-sessions/${sessionId}`),
   sendMessage: (activityId, studentId, content) =>
     request(
       `/activities/${activityId}/sessions/${studentId}/messages`,
@@ -166,6 +216,21 @@ export const api = {
       }
     ),
 
+    //student chat
+    sendChatPrompt: (sessionId, prompt, clientRequestId) =>
+  request('/chat-messages/send', {
+    method: 'POST',
+    body: JSON.stringify({
+      sessionId: Number(sessionId),
+      prompt,
+      clientRequestId,
+    }),
+  }),
+//chat histry for student
+getChatHistory: (sessionId) =>
+  request(
+    `/chat-messages/session/${encodeURIComponent(sessionId)}/history`
+  ),
   // Admin
   getStats: () =>
     request('/admin/stats'),
