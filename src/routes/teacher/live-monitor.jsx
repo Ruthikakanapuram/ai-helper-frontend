@@ -599,7 +599,7 @@ function StudentSidebar({
   const filters = [
     { id: 'all', label: 'All', count: students.length },
     { id: 'started', label: 'Started', count: startedCount },
-    { id: 'waiting', label: 'Waiting', count: waitingCount },
+    { id: 'waiting', label: 'Not Started', count: waitingCount },
   ];
 
   // Collapsed: a narrow rail with just the avatars.
@@ -1227,11 +1227,11 @@ function ChatPanel({ student }) {
               </div>
             )}
 
-          {!historyQuery.hasPreviousPage && messages.length > 0 && (
+          {/* {!historyQuery.hasPreviousPage && messages.length > 0 && (
             <p className="py-2 text-center text-[11px] text-slate-400">
               Beginning of conversation
             </p>
-          )}
+          )} */}
         </div>
       </div>
 
