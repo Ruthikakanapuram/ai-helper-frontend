@@ -10,6 +10,12 @@ import { useAuth } from '../../features/auth/store';
 import { Transcript } from '../../features/chat/transcript';
 import { remaining, mmss } from '../../lib/utils';
 import { Badge, Button, ErrorState, Loading, Spinner } from '../../components/ui';
+import {
+  RadioTower,
+  CircleCheck,
+  ClockAlert,
+  CircleStop,
+} from 'lucide-react';
 
 const finalStatuses = ['COMPLETED', 'EXPIRED', 'TERMINATED'];
 const endedActivities = ['CLOSED', 'ARCHIVED'];
@@ -69,26 +75,42 @@ export function StudentChat() {
   const listedSession = activity?.chatSession ?? null;
   const isPublished = activity?.status === 'PUBLISHED';
 
-  const sessionKey = ['chat-session-entry', String(userId), String(activityId)];
+
+
+  const sessionKey = [
+    'chat-session-entry',
+    String(userId),
+    String(activityId),
+  ];
+
   const sessionQuery = useQuery({
     queryKey: sessionKey,
-    enabled: Boolean(userId && activityId && activitiesQuery.isSuccess && activity),
+
+    enabled: Boolean(
+      userId &&
+      activityId &&
+      activitiesQuery.isSuccess &&
+      activity
+    ),
+
     queryFn: async () => {
-      // List response already supplies the session; never POST for a known session.
-      if (listedSession?.id) return listedSession;
-      // Read-only lookup allows refresh/direct navigation without creating duplicates.
-      try {
-        const existing = await api.getMyActivitySession(activityId);
-        if (existing?.id) return existing;
-      } catch (error) {
-        if (error.status !== 404) throw error;
+      // The activity-list response includes the existing session.
+      if (listedSession?.id) {
+        return listedSession;
       }
-      // Create only if activity is live and there is no existing session.
-      if (isPublished) return api.enterActivity(activityId);
+
+      // No session exists yet.
+      // Only create a session if the activity is published.
+      if (activity?.status === 'PUBLISHED') {
+        return api.enterActivity(activityId);
+      }
+
+      // Closed/scheduled activity without a session.
       return null;
     },
+
+    staleTime: 30_000,
     retry: false,
-    staleTime: 0,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
@@ -111,19 +133,19 @@ export function StudentChat() {
 
   const effectiveSession = historyQuery.data?.session ?? session;
   const secs = remaining(activity?.startedAt, activity?.duration ?? 30, now);
-const sessionEnded = finalStatuses.includes(
-  effectiveSession?.status
-);
+  const sessionEnded = finalStatuses.includes(
+    effectiveSession?.status
+  );
 
-const activityEnded = endedActivities.includes(
-  activity?.status
-);
+  const activityEnded = endedActivities.includes(
+    activity?.status
+  );
 
-const canChat =
-  activity?.status === 'PUBLISHED' &&
-  effectiveSession?.status === 'ACTIVE' &&
-  !sessionEnded &&
-  !activityEnded;
+  const canChat =
+    activity?.status === 'PUBLISHED' &&
+    effectiveSession?.status === 'ACTIVE' &&
+    !sessionEnded &&
+    !activityEnded;
   const send = useMutation({
     mutationFn: ({ prompt, clientRequestId }) => api.sendChatPrompt(sessionId, prompt, clientRequestId),
     onSuccess: (turn) => {
@@ -182,13 +204,55 @@ const canChat =
         </div>
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1 rounded-xl bg-slate-100 px-3 py-2 font-mono text-sm font-bold dark:bg-slate-800"><Clock size={15} />{activity.startedAt ? mmss(secs) : '--:--'}</span>
-<Badge
-  status={
-    sessionEnded || activityEnded
-      ? 'ENDED'
-      : activity?.status ?? 'UNKNOWN'
-  }
-/>        </div>
+
+          {(() => {
+            const status = sessionEnded || activityEnded
+              ? session?.status === 'ACTIVE'
+                ? 'TERMINATED'
+                : session?.status
+              : session?.status;
+
+            const config = {
+              ACTIVE: {
+                label: 'LIVE',
+                Icon: RadioTower,
+                className: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
+              },
+              COMPLETED: {
+                label: 'COMPLETED',
+                Icon: CircleCheck,
+                className: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+              },
+              EXPIRED: {
+                label: 'EXPIRED',
+                Icon: ClockAlert,
+                className: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+              },
+              TERMINATED: {
+                label: 'TERMINATED',
+                Icon: CircleStop,
+                className: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+              },
+            };
+
+            const current = config[status] ?? {
+              label: status || 'UNKNOWN',
+              Icon: ClockAlert,
+              className: 'bg-slate-100 text-slate-600',
+            };
+
+            return (
+              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${current.className}`}>
+                <current.Icon
+                  size={14}
+                  className={status === 'ACTIVE' ? 'animate-pulse' : ''}
+                />
+                {current.label}
+              </span>
+            );
+          })()}
+
+        </div>
       </header>
       <div ref={scrollRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <Transcript messages={messages} typing={sending} emptyText="Ask a question to start exploring this topic." />
@@ -197,10 +261,10 @@ const canChat =
       <div className="border-t border-slate-200 p-4 dark:border-slate-800">
         {!sessionId ? <div role="status" className="rounded-xl bg-slate-100 p-4 text-center dark:bg-slate-800">No chat history exists for this activity.</div>
           : !canChat ? <div role="status" className="rounded-xl bg-amber-50 p-4 text-center font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">Session ended · Chat history is read-only.</div>
-          : <div className="flex items-end gap-3">
-            <textarea aria-label="Your message" className="input max-h-36 min-h-[48px] flex-1 resize-none" rows={2} placeholder="Ask anything about this topic…" value={text} disabled={sending} onChange={(event) => { setText(event.target.value); if (draftRequest && event.target.value.trim() !== draftRequest.prompt) setDraftRequest(null); }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submit(); } }} />
-            <Button aria-label="Send message" className="!h-12" disabled={!text.trim() || sending} onClick={submit}>{sending ? <Spinner /> : <Send size={18} />}</Button>
-          </div>}
+            : <div className="flex items-end gap-3">
+              <textarea aria-label="Your message" className="input max-h-36 min-h-[48px] flex-1 resize-none" rows={2} placeholder="Ask anything about this topic…" value={text} disabled={sending} onChange={(event) => { setText(event.target.value); if (draftRequest && event.target.value.trim() !== draftRequest.prompt) setDraftRequest(null); }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submit(); } }} />
+              <Button aria-label="Send message" className="!h-12" disabled={!text.trim() || sending} onClick={submit}>{sending ? <Spinner /> : <Send size={18} />}</Button>
+            </div>}
         <p className="mt-2 text-center text-xs text-slate-400">AI can make mistakes. Check important information with your teacher.</p>
       </div>
     </div>
