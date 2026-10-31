@@ -40,7 +40,25 @@ function StatusBadge({ status }) {
     </span>
   );
 }
+function formatDateTime(value) {
+  if (!value) return null;
 
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
 function formatDate(value) {
   if (!value) return '—';
 
@@ -177,17 +195,52 @@ export function TeacherActivities() {
   });
 
   const columns = useMemo(() => [
-    c.accessor('title', {
-      header: 'Activity',
-      cell: (info) => (
-        <div>
-          <p className="font-semibold">{info.getValue()}</p>
-          <p className="mt-1 text-xs text-slate-500">
-            Created {formatDate(info.row.original.createdAt)}
-          </p>
-        </div>
-      ),
-    }),
+   
+c.accessor('title', {
+  header: 'Activity',
+
+  cell: (info) => {
+    const activity = info.row.original;
+
+    const startedAt = formatDateTime(activity.startedAt);
+    const endedAt = formatDateTime(activity.endedAt);
+
+    return (
+      <div className="min-w-[220px] space-y-1">
+        {/* Activity name */}
+        <p className="font-semibold text-slate-900 dark:text-white">
+          {activity.title}
+        </p>
+
+        {/* Created date */}
+        <p className="text-xs text-slate-500">
+          Created: {formatDate(activity.createdAt)}
+        </p>
+
+        {/* Show only when activity has started */}
+        {startedAt && (
+          <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
+            <Play size={12} />
+            <span>
+              Started: {startedAt}
+            </span>
+          </div>
+        )}
+
+        {/* Show only when activity has ended */}
+        {endedAt && (
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <Square size={12} />
+            <span>
+              Ended: {endedAt}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  },
+}),
+
 
     c.accessor('topic', {
       header: 'Topic',
