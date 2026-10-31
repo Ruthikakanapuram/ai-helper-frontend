@@ -12,11 +12,12 @@ export const activitySchema = z.object({
     .optional()
     .default(''),
 
-  duration: z.union([
-    z.literal(20),
-    z.literal(30),
-    z.literal(45),
-  ]),
+ duration: z
+  .number()
+  .int()
+  .min(5, 'Minimum duration is 5 minutes')
+  .max(120, 'Maximum duration is 120 minutes')
+  .multipleOf(5, 'Duration must be in multiples of 5 minutes'),
 
   scheduledDate: z
     .string()

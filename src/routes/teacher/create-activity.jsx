@@ -354,55 +354,46 @@ export function CreateActivity() {
             </div>
 
             <select
-              aria-label="Branch"
-              className="input !w-36 !py-2 !text-sm"
-              value={branch}
-              onChange={(e) => {
-                setBranch(e.target.value);
-                setYear('');
-                setSection('');
-              }}
-            >
-              <option value="">All branches</option>
-              {['CSE', 'AIML', 'DS'].map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
+  aria-label="Branch"
+  className="input !w-36 !py-2 !text-sm"
+  value={branch}
+  onChange={(e) => setBranch(e.target.value)}
+>
+  <option value="">All branches</option>
+  {['CSE', 'AIML', 'DS'].map((v) => (
+    <option key={v} value={v}>
+      {v}
+    </option>
+  ))}
+</select>
 
-            <select
-              aria-label="Year"
-              className="input !w-32 !py-2 !text-sm"
-              value={year}
-              onChange={(e) => {
-                setYear(e.target.value);
-                setSection('');
-              }}
-              disabled={!branch}
-            >
-              <option value="">All years</option>
-              {[1, 2, 3, 4].map((v) => (
-                <option key={v} value={v}>
-                  Year {v}
-                </option>
-              ))}
-            </select>
+           <select
+  aria-label="Year"
+  className="input !w-32 !py-2 !text-sm"
+  value={year}
+  onChange={(e) => setYear(e.target.value)}
+>
+  <option value="">All years</option>
+  {[1, 2, 3, 4].map((v) => (
+    <option key={v} value={v}>
+      Year {v}
+    </option>
+  ))}
+</select>
 
-            <select
-              aria-label="Section"
-              className="input !w-36 !py-2 !text-sm"
-              value={section}
-              onChange={(e) => setSection(e.target.value)}
-              disabled={!year}
-            >
-              <option value="">All sections</option>
-              {['A', 'B', 'C', 'D'].map((v) => (
-                <option key={v} value={v}>
-                  Section {v}
-                </option>
-              ))}
-            </select>
+           <select
+  aria-label="Section"
+  className="input !w-36 !py-2 !text-sm"
+  value={section}
+  onChange={(e) => setSection(e.target.value)}
+>
+  <option value="">All sections</option>
+  {['A', 'B', 'C', 'D'].map((v) => (
+    <option key={v} value={v}>
+      Section {v}
+    </option>
+  ))}
+</select>
 
             <span className="whitespace-nowrap rounded-full bg-blue-100 px-3 py-1.5 text-sm font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
               <Users size={15} className="mr-1 inline" />
