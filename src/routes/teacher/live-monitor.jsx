@@ -13,6 +13,7 @@ import { Link, useParams } from '@tanstack/react-router';
 import {
   useInfiniteQuery,
   useMutation,
+  useQueries,
   useQuery,
 } from '@tanstack/react-query';
 
@@ -25,6 +26,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  ListOrdered,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -34,7 +36,6 @@ import {
   Search,
   Square,
   UserRound,
-  Users,
 } from 'lucide-react';
 
 import { toast } from 'sonner';
@@ -96,67 +97,23 @@ function formatDay(value) {
   });
 }
 
+function formatDateTime(value) {
+  if (!value) return '';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return '';
+
+  return date.toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function getActivityTitle(activity) {
   return activity?.title ?? activity?.name ?? 'Activity';
-}
-
-function getStudentStatus(student) {
-  if (!student.hasStarted || !student.sessionId) {
-    return 'NOT_STARTED';
-  }
-
-  return student.sessionStatus || 'STARTED';
-}
-
-function getStatusClasses(status) {
-  switch (status) {
-    case 'ACTIVE':
-    case 'IN_PROGRESS':
-    case 'PUBLISHED':
-    case 'STARTED':
-      return 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-950/50 dark:text-emerald-300 dark:ring-emerald-400/20';
-
-    case 'COMPLETED':
-    case 'CLOSED':
-    case 'STOPPED':
-      return 'bg-slate-100 text-slate-600 ring-slate-500/10 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-400/20';
-
-    case 'FAILED':
-    case 'TERMINATED':
-      return 'bg-red-50 text-red-700 ring-red-600/15 dark:bg-red-950/50 dark:text-red-300 dark:ring-red-400/20';
-
-    case 'PROCESSING':
-    case 'PENDING':
-    case 'EXPIRED':
-      return 'bg-amber-50 text-amber-700 ring-amber-600/15 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-400/20';
-
-    default:
-      return 'bg-slate-100 text-slate-500 ring-slate-500/10 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-400/20';
-  }
-}
-
-const STATUS_LABELS = {
-  NOT_STARTED: 'Not started',
-  ACTIVE: 'Active',
-  IN_PROGRESS: 'Active',
-  STARTED: 'Started',
-  COMPLETED: 'Completed',
-  CLOSED: 'Closed',
-  STOPPED: 'Stopped',
-  EXPIRED: 'Expired',
-  TERMINATED: 'Terminated',
-};
-
-function StudentStatus({ student }) {
-  const status = getStudentStatus(student);
-
-  return (
-    <span
-      className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${getStatusClasses(status)}`}
-    >
-      {STATUS_LABELS[status] || status}
-    </span>
-  );
 }
 
 const AVATAR_COLORS = [
@@ -257,13 +214,26 @@ function ActivityHeader({
   const isRunning = ['PUBLISHED', 'ACTIVE'].includes(activity.status) && !ended;
   const canStop = isRunning;
 
-  const timeTone = !isRunning
-    ? 'text-slate-800 dark:text-slate-200'
-    : seconds <= 60
+  const timeTone =
+    seconds <= 60
       ? 'text-red-600 dark:text-red-400'
       : seconds <= 300
         ? 'text-amber-600 dark:text-amber-400'
         : 'text-slate-800 dark:text-slate-200';
+
+  // Start time, and end time (actual if the API provides it, otherwise
+  // start time + duration).
+  const startedAt = activity.startedAt ? new Date(activity.startedAt) : null;
+  const endedRaw = activity.endedAt ?? activity.stoppedAt ?? activity.closedAt;
+
+  const endedAt = endedRaw
+    ? new Date(endedRaw)
+    : startedAt && activity.duration
+      ? new Date(startedAt.getTime() + activity.duration * 60000)
+      : null;
+
+  const startedLabel = formatDateTime(startedAt);
+  const endedLabel = formatDateTime(endedAt);
 
   return (
     <header className="shrink-0 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
@@ -292,28 +262,44 @@ function ActivityHeader({
           </div>
         </div>
 
-        {/* Status, time, students + controls */}
+        {/* Status, students + controls */}
 
         <div className="flex flex-wrap items-center gap-2 md:gap-3">
           <Chip icon={Radio} label="Status">
             <ActivityStatus status={status} />
           </Chip>
 
-          <Chip icon={Clock} label="Time left">
-            <span className={`font-semibold tabular-nums ${timeTone}`}>
-              {mmss(
-                ['SCHEDULED', 'DRAFT'].includes(activity.status)
-                  ? (activity.duration || 0) * 60
-                  : seconds,
-              )}
-            </span>
-          </Chip>
+          {!ended && (
+            <Chip icon={Clock} label="Time left">
+              <span
+                className={`font-semibold tabular-nums ${
+                  isRunning ? timeTone : 'text-slate-800 dark:text-slate-200'
+                }`}
+              >
+                {mmss(
+                  ['SCHEDULED', 'DRAFT'].includes(activity.status)
+                    ? (activity.duration || 0) * 60
+                    : seconds,
+                )}
+              </span>
+            </Chip>
+          )}
 
-          <Chip icon={Users} label="Students">
-            <span className="font-semibold text-slate-800 dark:text-slate-200">
-              {activity.studentCount ?? 0}
-            </span>
-          </Chip>
+          {startedLabel && (
+            <Chip icon={Clock} label="Started">
+              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                {startedLabel}
+              </span>
+            </Chip>
+          )}
+
+          {endedLabel && (ended || isRunning) && (
+            <Chip icon={Clock} label={ended ? 'Ended' : 'Ends'}>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                {endedLabel}
+              </span>
+            </Chip>
+          )}
 
           {canStart && (
             <Button onClick={onStart} disabled={isStarting || isStopping}>
@@ -367,12 +353,6 @@ function ActivityHeader({
           )}
         </div>
       </div>
-
-      {/* {ended && (
-        <div className="border-t border-slate-100 bg-slate-50 px-6 py-1.5 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900">
-          Activity ended. All student conversations are available for review.
-        </div>
-      )} */}
     </header>
   );
 }
@@ -546,6 +526,7 @@ const VISIBLE_LIMIT = 5;
 
 function StudentSidebar({
   students,
+  stats,
   selectedStudentId,
   onSelect,
   width,
@@ -554,27 +535,19 @@ function StudentSidebar({
   onToggleCollapsed,
 }) {
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState('all');
   const [expanded, setExpanded] = useState(false);
-
-  const startedCount = students.filter((s) => s.hasStarted).length;
-  const waitingCount = students.length - startedCount;
 
   const visible = useMemo(() => {
     const term = query.trim().toLowerCase();
 
-    return students.filter((student) => {
-      if (filter === 'started' && !student.hasStarted) return false;
-      if (filter === 'waiting' && student.hasStarted) return false;
+    if (!term) return students;
 
-      if (!term) return true;
-
-      return (
+    return students.filter(
+      (student) =>
         String(student.name || '').toLowerCase().includes(term) ||
-        String(student.rollNumber || '').toLowerCase().includes(term)
-      );
-    });
-  }, [students, query, filter]);
+        String(student.rollNumber || '').toLowerCase().includes(term),
+    );
+  }, [students, query]);
 
   // Collapse long lists to the first few students; searching always shows
   // every match, and the selected student is never hidden.
@@ -595,12 +568,6 @@ function StudentSidebar({
   }, [collapsed, visible, selectedStudentId]);
 
   const hiddenCount = visible.length - shown.length;
-
-  const filters = [
-    { id: 'all', label: 'All', count: students.length },
-    { id: 'started', label: 'Started', count: startedCount },
-    { id: 'waiting', label: 'Not Started', count: waitingCount },
-  ];
 
   // Collapsed: a narrow rail with just the avatars.
   if (isDesktop && panelCollapsed) {
@@ -654,19 +621,18 @@ function StudentSidebar({
       className="flex max-h-[38vh] min-h-0 w-full shrink-0 flex-col border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 md:max-h-none md:border-b-0 md:border-r"
     >
 
-      {/* Heading, search and filters */}
+      {/* Heading and search */}
 
       <div className="shrink-0 space-y-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            Students
+            Students{' '}
+            <span className="font-normal text-slate-500">
+              ({students.length})
+            </span>
           </h2>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-slate-500">
-              {startedCount} of {students.length} started
-            </span>
-
             {isDesktop && (
               <button
                 type="button"
@@ -695,24 +661,6 @@ function StudentSidebar({
             className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 dark:border-slate-800 dark:bg-slate-900 dark:focus:bg-slate-900"
           />
         </div>
-
-        <div className="flex gap-1.5">
-          {filters.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setFilter(item.id)}
-              aria-pressed={filter === item.id}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                filter === item.id
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-              }`}
-            >
-              {item.label} {item.count}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* List: only this section scrolls */}
@@ -721,6 +669,12 @@ function StudentSidebar({
         {shown.map((student) => {
           const selected =
             String(selectedStudentId) === String(student.studentId);
+
+          // Counted on the client from the student's chat history.
+          const stat = stats?.[String(student.studentId)];
+          const promptCount = stat?.count ?? 0;
+          const promptLabel = `${promptCount}${stat?.hasMore ? '+' : ''}`;
+          const lastTime = stat?.lastAt || student.lastMessageAt;
 
           return (
             <button
@@ -744,17 +698,23 @@ function StudentSidebar({
                 <p className="mt-0.5 truncate text-xs text-slate-400">
                   {student.rollNumber}
                 </p>
+
+                <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                  <MessageSquare size={11} />
+                  {promptLabel} {promptCount === 1 && !stat?.hasMore ? 'prompt' : 'prompts'}
+                </p>
               </div>
 
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                <StudentStatus student={student} />
-
-                {student.lastMessageAt && (
-                  <span className="text-[10px] text-slate-400">
-                    {formatTime(student.lastMessageAt)}
-                  </span>
+              <span className="shrink-0 self-start pt-1 text-right text-[11px] leading-tight text-slate-400">
+                {lastTime ? (
+                  <>
+                    <span className="block text-[10px]">Last msg</span>
+                    {formatTime(lastTime)}
+                  </>
+                ) : (
+                  '—'
                 )}
-              </div>
+              </span>
             </button>
           );
         })}
@@ -797,7 +757,7 @@ function StudentSidebar({
             <p className="text-sm text-slate-500">
               {students.length === 0
                 ? 'No students assigned.'
-                : 'No students match your filters.'}
+                : 'No students match your search.'}
             </p>
           </div>
         )}
@@ -810,7 +770,14 @@ function StudentSidebar({
 // Chat header
 // ------------------------------------------------------
 
-function ChatHeader({ student, onRefresh, isRefreshing }) {
+function ChatHeader({
+  student,
+  onRefresh,
+  isRefreshing,
+  promptCount,
+  outlineOpen,
+  onToggleOutline,
+}) {
   const details = [
     student.rollNumber,
     student.branch,
@@ -835,7 +802,23 @@ function ChatHeader({ student, onRefresh, isRefreshing }) {
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <StudentStatus student={student} />
+        {onToggleOutline && (
+          <button
+            type="button"
+            onClick={onToggleOutline}
+            data-outline-toggle
+            aria-expanded={outlineOpen}
+            title="Jump to a prompt"
+            className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition ${
+              outlineOpen
+                ? 'bg-blue-600 text-white'
+                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+            }`}
+          >
+            <ListOrdered size={15} />
+            Prompts ({promptCount})
+          </button>
+        )}
 
         {onRefresh && (
           <button
@@ -973,6 +956,7 @@ function ChatPanel({ student }) {
   const nearBottom = useRef(true);
 
   const [showJump, setShowJump] = useState(false);
+  const [showOutline, setShowOutline] = useState(false);
 
   const sessionId = student?.sessionId;
 
@@ -1090,6 +1074,45 @@ function ChatPanel({ student }) {
     historyQuery.fetchPreviousPage,
   ]);
 
+  // Close the prompt list when clicking anywhere else, or pressing Escape.
+  useEffect(() => {
+    if (!showOutline) return undefined;
+
+    const onPointerDown = (event) => {
+      if (
+        event.target.closest?.('[data-outline-panel]') ||
+        event.target.closest?.('[data-outline-toggle]')
+      ) {
+        return;
+      }
+
+      setShowOutline(false);
+    };
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setShowOutline(false);
+    };
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showOutline]);
+
+  // Jump to a specific prompt in the conversation.
+  const jumpToPrompt = useCallback((id) => {
+    setShowOutline(false);
+
+    const target = document.getElementById(`prompt-${id}`);
+
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
+
   const handleScroll = () => {
     const element = scrollRef.current;
 
@@ -1158,7 +1181,64 @@ function ChatPanel({ student }) {
         student={student}
         onRefresh={() => void historyQuery.refetch()}
         isRefreshing={historyQuery.isFetching && !historyQuery.isLoading}
+        promptCount={`${messages.length}${historyQuery.hasPreviousPage ? '+' : ''}`}
+        outlineOpen={showOutline}
+        onToggleOutline={() => setShowOutline((open) => !open)}
       />
+
+      {/* Prompt outline: click a prompt to jump to it */}
+
+      {showOutline && (
+        <div data-outline-panel className="absolute right-4 top-14 z-20 flex max-h-[60vh] w-80 max-w-[calc(100%-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+          <div className="shrink-0 border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:text-slate-200">
+            Prompts
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {historyQuery.hasPreviousPage && (
+              <button
+                type="button"
+                onClick={() => void loadOlderMessages()}
+                disabled={historyQuery.isFetchingPreviousPage}
+                className="w-full border-b border-slate-100 px-3 py-2 text-left text-xs font-medium text-blue-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:text-blue-400 dark:hover:bg-slate-800"
+              >
+                {historyQuery.isFetchingPreviousPage
+                  ? 'Loading...'
+                  : 'Load earlier prompts'}
+              </button>
+            )}
+
+            {messages.map((message, index) => (
+              <button
+                key={message.id}
+                type="button"
+                onClick={() => jumpToPrompt(message.id)}
+                className="flex w-full items-start gap-2 border-b border-slate-100 px-3 py-2 text-left text-xs transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"
+              >
+                <span className="mt-0.5 w-5 shrink-0 text-slate-400">
+                  {index + 1}
+                </span>
+
+                <span className="min-w-0 flex-1">
+                  <span className="line-clamp-2 break-words text-slate-700 dark:text-slate-200">
+                    {message.prompt}
+                  </span>
+
+                  <span className="mt-0.5 block text-[10px] text-slate-400">
+                    {formatTime(message.createdAt)}
+                  </span>
+                </span>
+              </button>
+            ))}
+
+            {messages.length === 0 && (
+              <p className="px-3 py-4 text-center text-xs text-slate-400">
+                No prompts yet
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Only the conversation area scrolls */}
 
@@ -1203,7 +1283,9 @@ function ChatPanel({ student }) {
               <Fragment key={message.id}>
                 {day && day !== previousDay && <DaySeparator label={day} />}
 
-                <ChatMessage message={message} student={student} />
+                <div id={`prompt-${message.id}`} className="scroll-mt-4">
+                  <ChatMessage message={message} student={student} />
+                </div>
               </Fragment>
             );
           })}
@@ -1226,12 +1308,6 @@ function ChatPanel({ student }) {
                 </p>
               </div>
             )}
-
-          {/* {!historyQuery.hasPreviousPage && messages.length > 0 && (
-            <p className="py-2 text-center text-[11px] text-slate-400">
-              Beginning of conversation
-            </p>
-          )} */}
         </div>
       </div>
 
@@ -1290,7 +1366,8 @@ export function TeacherMonitor() {
   const students = monitorQuery.data?.students || [];
 
   // The clock only ticks while the activity is live, so it stops the moment
-  // the teacher stops (or the activity closes).
+  // the teacher stops (or the activity closes). It is still needed to detect
+  // when the activity's duration has run out.
   const isLive = ['PUBLISHED', 'ACTIVE'].includes(activity?.status);
 
   useEffect(() => {
@@ -1325,47 +1402,109 @@ export function TeacherMonitor() {
     students.find(
       (student) => String(student.studentId) === String(selectedStudentId),
     ) || null;
-const handleSseEvent = useCallback((event) => {
-  const supportedEvents = [
-    'prompt_submitted',
-    'response_completed',
-    'response_failed',
-  ];
 
-  if (!supportedEvents.includes(event.type)) return;
+  // Prompt count + last message time for every student, computed on the
+  // client from each student's chat history (no backend change needed).
+  const STATS_LIMIT = 200;
 
-  // Refresh the student monitoring information.
-  void queryClient.invalidateQueries({
-    queryKey: ['activity-monitor', String(activityId)],
+  const statsQueries = useQueries({
+    queries: students
+      .filter((student) => student.sessionId)
+      .map((student) => ({
+        queryKey: ['activity-monitor-stats', String(student.sessionId)],
+        queryFn: () =>
+          api.getSessionChatHistory(student.sessionId, { limit: STATS_LIMIT }),
+        select: (data) => {
+          const list = data?.messages || [];
+
+          let lastAt = null;
+
+          for (const message of list) {
+            const time = new Date(message.createdAt).getTime();
+
+            if (!Number.isNaN(time) && (lastAt === null || time > lastAt)) {
+              lastAt = time;
+            }
+          }
+
+          return {
+            studentId: String(student.studentId),
+            count: list.length,
+            hasMore: Boolean(data?.pagination?.hasMore),
+            lastAt: lastAt === null ? null : new Date(lastAt).toISOString(),
+          };
+        },
+      })),
   });
 
-  // Refresh the conversation associated with this event.
-  if (event.sessionId) {
-    void queryClient.invalidateQueries({
-      queryKey: [
-        'activity-monitor-chat',
-        String(event.sessionId),
-      ],
-      exact: true,
-    });
-  }
-}, [activityId]);
-const handleSseReconnect = useCallback(() => {
-  void monitorQuery.refetch();
+  const stats = useMemo(() => {
+    const map = {};
 
-  if (selectedStudent?.sessionId) {
+    for (const query of statsQueries) {
+      if (query.data) map[query.data.studentId] = query.data;
+    }
+
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statsQueries.map((query) => query.dataUpdatedAt).join(',')]);
+
+  const handleSseEvent = useCallback((event) => {
+    const supportedEvents = [
+      'prompt_submitted',
+      'response_completed',
+      'response_failed',
+    ];
+
+    if (!supportedEvents.includes(event.type)) return;
+
+    // Refresh the student monitoring information.
     void queryClient.invalidateQueries({
-      queryKey: [
-        'activity-monitor-chat',
-        String(selectedStudent.sessionId),
-      ],
-      exact: true,
+      queryKey: ['activity-monitor', String(activityId)],
     });
-  }
-}, [
-  monitorQuery.refetch,
-  selectedStudent?.sessionId,
-]);
+
+    // Refresh the conversation associated with this event.
+    if (event.sessionId) {
+      void queryClient.invalidateQueries({
+        queryKey: [
+          'activity-monitor-chat',
+          String(event.sessionId),
+        ],
+        exact: true,
+      });
+
+      // Refresh that student's prompt count / last message time.
+      void queryClient.invalidateQueries({
+        queryKey: ['activity-monitor-stats', String(event.sessionId)],
+        exact: true,
+      });
+    } else {
+      void queryClient.invalidateQueries({
+        queryKey: ['activity-monitor-stats'],
+      });
+    }
+  }, [activityId]);
+
+  const handleSseReconnect = useCallback(() => {
+    void monitorQuery.refetch();
+
+    void queryClient.invalidateQueries({
+      queryKey: ['activity-monitor-stats'],
+    });
+
+    if (selectedStudent?.sessionId) {
+      void queryClient.invalidateQueries({
+        queryKey: [
+          'activity-monitor-chat',
+          String(selectedStudent.sessionId),
+        ],
+        exact: true,
+      });
+    }
+  }, [
+    monitorQuery.refetch,
+    selectedStudent?.sessionId,
+  ]);
+
   // Socket events.
   const handleSocketEvent = useCallback(
     (event) => {
@@ -1423,11 +1562,12 @@ const handleSseReconnect = useCallback(() => {
 
   // Keeps the live updates running (no connection indicator is shown).
   // useActivitySocket(activityId, handleSocketEvent);
-const connectionStatus = useActivitySse(
-  activityId,
-  handleSseEvent,
-  handleSseReconnect,
-);
+  const connectionStatus = useActivitySse(
+    activityId,
+    handleSseEvent,
+    handleSseReconnect,
+  );
+
   // Start activity.
   const start = useMutation({
     mutationFn: () => api.startActivity(activityId),
@@ -1506,7 +1646,6 @@ const connectionStatus = useActivitySse(
     ['CLOSED', 'STOPPED'].includes(activity.status) ||
     (['PUBLISHED', 'ACTIVE'].includes(activity.status) && remainingSeconds === 0);
 
-  // A stopped/closed activity always shows 00:00.
   const seconds = ended ? 0 : remainingSeconds;
 
   return (
@@ -1531,6 +1670,7 @@ const connectionStatus = useActivitySse(
 
         <StudentSidebar
           students={students}
+          stats={stats}
           selectedStudentId={selectedStudentId}
           onSelect={(id) => setSelectedStudentId(String(id))}
           width={sidebar.width}
