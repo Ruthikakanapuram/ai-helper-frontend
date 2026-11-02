@@ -17,7 +17,7 @@ import {
 } from '@tanstack/react-query';
 
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-
+import { useActivitySse } from '../../features/chat/useActivitySse';
 import {
   ArrowDown,
   ArrowLeft,
@@ -47,7 +47,7 @@ import {
   refreshActivity,
 } from '../../lib/query';
 
-import { useActivitySocket } from '../../features/chat/useActivitySocket';
+// import { useActivitySocket } from '../../features/chat/useActivitySocket';
 
 import { remaining, mmss } from '../../lib/utils';
 
@@ -1325,7 +1325,47 @@ export function TeacherMonitor() {
     students.find(
       (student) => String(student.studentId) === String(selectedStudentId),
     ) || null;
+const handleSseEvent = useCallback((event) => {
+  const supportedEvents = [
+    'prompt_submitted',
+    'response_completed',
+    'response_failed',
+  ];
 
+  if (!supportedEvents.includes(event.type)) return;
+
+  // Refresh the student monitoring information.
+  void queryClient.invalidateQueries({
+    queryKey: ['activity-monitor', String(activityId)],
+  });
+
+  // Refresh the conversation associated with this event.
+  if (event.sessionId) {
+    void queryClient.invalidateQueries({
+      queryKey: [
+        'activity-monitor-chat',
+        String(event.sessionId),
+      ],
+      exact: true,
+    });
+  }
+}, [activityId]);
+const handleSseReconnect = useCallback(() => {
+  void monitorQuery.refetch();
+
+  if (selectedStudent?.sessionId) {
+    void queryClient.invalidateQueries({
+      queryKey: [
+        'activity-monitor-chat',
+        String(selectedStudent.sessionId),
+      ],
+      exact: true,
+    });
+  }
+}, [
+  monitorQuery.refetch,
+  selectedStudent?.sessionId,
+]);
   // Socket events.
   const handleSocketEvent = useCallback(
     (event) => {
@@ -1382,8 +1422,12 @@ export function TeacherMonitor() {
   );
 
   // Keeps the live updates running (no connection indicator is shown).
-  useActivitySocket(activityId, handleSocketEvent);
-
+  // useActivitySocket(activityId, handleSocketEvent);
+const connectionStatus = useActivitySse(
+  activityId,
+  handleSseEvent,
+  handleSseReconnect,
+);
   // Start activity.
   const start = useMutation({
     mutationFn: () => api.startActivity(activityId),

@@ -1,6 +1,5 @@
 
-const ROOT =
-  import.meta.env.VITE_USE_MOCKS === 'false'
+export const ROOT =  import.meta.env.VITE_USE_MOCKS === 'false'
     ? import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
     : '/api';
 
