@@ -9,6 +9,7 @@ import { StudentHome } from './student/index';
 import { StudentChat } from './student/chat-session';
 import { AdminDashboard } from './admin/index';
 import { TeacherStudents } from './teacher/students';
+import {TeacherStudentsBulk} from './teacher/students-bulk';
 const root = createRootRoute({ component: () => <Outlet /> });
 const index = createRoute({ getParentRoute: () => root, path: '/', beforeLoad: () => { const u = useAuth.getState().user; throw redirect({ to: u ? u.role === 'TEACHER' ? '/teacher/activities' : u.role === 'STUDENT' ? '/student' : '/admin' : '/login' }); } });
 const login = createRoute({ getParentRoute: () => root, path: '/login', component: Login, beforeLoad: () => { const u = useAuth.getState().user; if (u)
@@ -21,10 +22,12 @@ const teacherList = createRoute({ getParentRoute: () => teacher, path: 'activiti
 const teacherNew = createRoute({ getParentRoute: () => teacher, path: 'activities/new', component: CreateActivity });
 const teacherStudents = createRoute({ getParentRoute: () => teacher, path: 'students', component: TeacherStudents });
 const teacherActivity = createRoute({ getParentRoute: () => teacher, path: 'activities/$activityId', component: TeacherMonitor });
+const teacherBulkStudents = createRoute({ getParentRoute: () => teacher, path: 'students/bulk', component: TeacherStudentsBulk });
+
 const student = createRoute({ getParentRoute: () => root, path: '/student', beforeLoad: guard('STUDENT'), component: Shell });
 const studentIndex = createRoute({ getParentRoute: () => student, path: '/', component: StudentHome });
 const studentActivity = createRoute({ getParentRoute: () => student, path: 'activities/$activityId', component: StudentChat });
 const admin = createRoute({ getParentRoute: () => root, path: '/admin', beforeLoad: guard('ADMIN'), component: Shell });
 const adminIndex = createRoute({ getParentRoute: () => admin, path: '/', component: AdminDashboard });
-const tree = root.addChildren([index, login, teacher.addChildren([teacherIndex, teacherList, teacherNew, teacherActivity, teacherStudents]), student.addChildren([studentIndex, studentActivity]), admin.addChildren([adminIndex])]);
+const tree = root.addChildren([index, login, teacher.addChildren([teacherIndex, teacherList, teacherNew, teacherActivity, teacherStudents, teacherBulkStudents]), student.addChildren([studentIndex, studentActivity]), admin.addChildren([adminIndex])]);
 export const router = createRouter({ routeTree: tree, defaultPreload: 'intent' });

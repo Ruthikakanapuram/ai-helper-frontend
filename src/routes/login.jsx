@@ -117,7 +117,7 @@ const logout = useAuth((state) => state.logout);
 
           <div>
             <h1 className="text-2xl font-extrabold">
-              AI Helper
+              Curiosity
             </h1>
 
             <p className="muted">
