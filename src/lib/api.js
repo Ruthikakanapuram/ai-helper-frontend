@@ -179,9 +179,20 @@ stopActivity: (id) =>
 
   // Students
     // Get students
-  getStudentsList: () =>
-    request('/students'),
+  // getStudentsList: () =>
+  //   request('/students'),
   
+  getStudentsList: (branch, year, section) => {
+  const params = new URLSearchParams({
+    branch: String(branch),
+    year: String(year),
+    section: String(section),
+  });
+
+  return request(
+    `/students/activities?${params.toString()}`
+  );
+},
    getStudentsByFilter: (branch, year, section) =>
     request(
       `/students?${new URLSearchParams({

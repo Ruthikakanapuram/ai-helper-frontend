@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 
-import { Link, useParams } from '@tanstack/react-router';
+import { Link, useParams,useSearch } from '@tanstack/react-router';
 
 import {
   useInfiniteQuery,
@@ -944,11 +944,160 @@ function ChatMessage({ message, student }) {
   );
 }
 
-// ------------------------------------------------------
-// Chat panel
-// ------------------------------------------------------
+export function TeacherStudentChatHistory() {
+  const { studentId, activityId } = useParams({
+    from:
+      '/teacher/students/$studentId/activities/$activityId/history',
+  });
 
-function ChatPanel({ student }) {
+  const { branch, year, section } = useSearch({
+    from:
+      '/teacher/students/$studentId/activities/$activityId/history',
+  });
+
+  const activityQuery = useQuery({
+    queryKey: keys.activity(activityId),
+    queryFn: () => api.getActivity(activityId),
+    enabled: Boolean(activityId),
+  });
+
+  const monitorQuery = useQuery({
+    queryKey: ['activity-monitor', String(activityId)],
+    queryFn: () => api.getActivityMonitor(activityId),
+    enabled: Boolean(activityId),
+  });
+
+  const activity = activityQuery.data;
+
+  // Student ID refers to students.id, not users.id.
+  const student = useMemo(() => {
+    const students = monitorQuery.data?.students ?? [];
+
+    return (
+      students.find(
+        (item) =>
+          String(item.studentId) === String(studentId)
+      ) ?? null
+    );
+  }, [monitorQuery.data, studentId]);
+
+  if (activityQuery.isPending || monitorQuery.isPending) {
+    return <Loading rows={5} />;
+  }
+
+  if (activityQuery.isError) {
+    return (
+      <ErrorState
+        error={activityQuery.error}
+        retry={() => void activityQuery.refetch()}
+      />
+    );
+  }
+
+  if (monitorQuery.isError) {
+    return (
+      <ErrorState
+        error={monitorQuery.error}
+        retry={() => void monitorQuery.refetch()}
+      />
+    );
+  }
+
+  // This block must ONLY show when student is missing.
+  if (!student) {
+    return (
+      <div className="rounded-xl border border-slate-200 p-8 text-center dark:border-slate-800">
+        <h2 className="font-semibold">
+          Student not found
+        </h2>
+
+        <p className="mt-2 text-sm text-slate-500">
+          The selected student was not found in
+          this activity.
+        </p>
+
+        <Link
+          to="/teacher/students/$studentId/activities"
+          params={{ studentId: String(studentId) }}
+          search={{ branch, year, section }}
+          className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:underline"
+        >
+          <ArrowLeft size={16} />
+          Back
+        </Link>
+      </div>
+    );
+  }
+
+  // Normal page rendering for a valid student.
+  return (
+    <div className="flex h-[calc(100dvh-100px)] min-h-[400px] w-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 lg:h-[calc(100dvh-80px)]">
+
+      {/* Single compact header */}
+      <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-800 sm:gap-4 sm:px-5">
+
+        {/* Left: Back */}
+        <Link
+          to="/teacher/students/$studentId/activities"
+          params={{
+            studentId: String(studentId),
+          }}
+          search={{
+            branch,
+            year,
+            section,
+          }}
+          aria-label="Back to student activities"
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <ArrowLeft size={17} />
+          <span>Back</span>
+        </Link>
+
+        {/* Center: Activity title */}
+        <div className="min-w-0 text-center">
+          <h1
+            className="truncate text-sm font-bold text-slate-900 dark:text-slate-100 sm:text-lg"
+            title={activity?.title ?? 'Activity'}
+          >
+            {activity?.title ?? 'Activity'}
+          </h1>
+        </div>
+
+        {/* Right: Student details */}
+        <div className="flex min-w-0 items-center justify-end gap-2">
+          <div className="min-w-0 text-right">
+            <p
+              className="max-w-[110px] truncate text-xs font-semibold text-slate-800 dark:text-slate-200 sm:max-w-[220px] sm:text-sm"
+              title={student.name}
+            >
+              {student.name}
+            </p>
+
+            {student.rollNumber && (
+              <p className="hidden truncate text-xs text-slate-500 sm:block">
+                {student.rollNumber}
+              </p>
+            )}
+          </div>
+
+          <Avatar student={student} size="sm" />
+        </div>
+      </header>
+
+      {/* Conversation area, without extra student header */}
+      <main className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <ChatPanel
+          key={`${activityId}-${studentId}`}
+          student={student}
+          hideHeader
+        />
+      </main>
+    </div>
+  );
+}
+
+function ChatPanel({ student, hideHeader = false }) {
   const scrollRef = useRef(null);
   const previousScrollHeight = useRef(null);
   const previousScrollTop = useRef(null);
@@ -1152,7 +1301,8 @@ function ChatPanel({ student }) {
   if (!sessionId) {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-slate-50 dark:bg-slate-950">
-        <ChatHeader student={student} />
+        {/* <ChatHeader student={student} /> */}
+        {!hideHeader && <ChatHeader student={student} />}
 
         <div className="flex min-h-0 flex-1 items-center justify-center p-6">
           <div className="max-w-sm text-center">
@@ -1177,12 +1327,20 @@ function ChatPanel({ student }) {
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-slate-50/70 dark:bg-slate-950">
 
-      <ChatHeader
+      {/* <ChatHeader
         student={student}
         onRefresh={() => void historyQuery.refetch()}
         isRefreshing={historyQuery.isFetching && !historyQuery.isLoading}
-      />
-
+      /> */}
+{!hideHeader && (
+  <ChatHeader
+    student={student}
+    onRefresh={() => void historyQuery.refetch()}
+    isRefreshing={
+      historyQuery.isFetching && !historyQuery.isLoading
+    }
+  />
+)}
       {/* Only the conversation area scrolls */}
 
       <div
