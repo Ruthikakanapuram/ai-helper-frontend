@@ -26,7 +26,6 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
-  ListOrdered,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -214,6 +213,18 @@ function ActivityHeader({
   const isRunning = ['PUBLISHED', 'ACTIVE'].includes(activity.status) && !ended;
   const canStop = isRunning;
 
+  // Show the title once: skip the topic/description when it just repeats it.
+  const title = getActivityTitle(activity);
+
+  const isSameAsTitle = (value) =>
+    String(value || '').trim().toLowerCase() === title.trim().toLowerCase();
+
+  const subtitle =
+    [activity.topic, activity.description]
+      .filter((value) => value && !isSameAsTitle(value))
+      .join(' · ') ||
+    (activity.topic || activity.description ? '' : 'Activity monitoring');
+
   const timeTone =
     seconds <= 60
       ? 'text-red-600 dark:text-red-400'
@@ -236,7 +247,7 @@ function ActivityHeader({
   const endedLabel = formatDateTime(endedAt);
 
   return (
-    <header className="shrink-0 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+    <header className="relative z-20 shrink-0 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-3 md:px-6">
 
         {/* Title */}
@@ -251,14 +262,28 @@ function ActivityHeader({
           </Link>
 
           <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100 md:text-lg">
-              {getActivityTitle(activity)}
+            <h1
+              title={title}
+              className="truncate text-base font-semibold text-slate-900 dark:text-slate-100 md:text-lg"
+            >
+              {title}
             </h1>
 
-            <p className="mt-0.5 max-w-[60ch] truncate text-xs text-slate-500">
-              {activity.topic || 'Activity monitoring'}
-              {activity.description ? ` · ${activity.description}` : ''}
-            </p>
+            {subtitle && (
+              <div className="group relative mt-0.5 min-w-0">
+                <p className="max-w-[60ch] truncate text-xs text-slate-500">
+                  {subtitle}
+                </p>
+
+                {/* Full text on hover */}
+                <div
+                  role="tooltip"
+                  className="pointer-events-none invisible absolute left-0 top-full z-30 mt-1 w-max max-w-[min(90vw,520px)] whitespace-normal break-words rounded-lg border border-slate-200 bg-white p-2.5 text-xs leading-5 text-slate-600 opacity-0 shadow-xl transition group-hover:visible group-hover:opacity-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                >
+                  {subtitle}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -770,14 +795,7 @@ function StudentSidebar({
 // Chat header
 // ------------------------------------------------------
 
-function ChatHeader({
-  student,
-  onRefresh,
-  isRefreshing,
-  promptCount,
-  outlineOpen,
-  onToggleOutline,
-}) {
+function ChatHeader({ student, onRefresh, isRefreshing }) {
   const details = [
     student.rollNumber,
     student.branch,
@@ -802,24 +820,6 @@ function ChatHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {onToggleOutline && (
-          <button
-            type="button"
-            onClick={onToggleOutline}
-            data-outline-toggle
-            aria-expanded={outlineOpen}
-            title="Jump to a prompt"
-            className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition ${
-              outlineOpen
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-            }`}
-          >
-            <ListOrdered size={15} />
-            Prompts ({promptCount})
-          </button>
-        )}
-
         {onRefresh && (
           <button
             type="button"
@@ -956,7 +956,8 @@ function ChatPanel({ student }) {
   const nearBottom = useRef(true);
 
   const [showJump, setShowJump] = useState(false);
-  const [showOutline, setShowOutline] = useState(false);
+  const [activeId, setActiveId] = useState(null);
+  const [hover, setHover] = useState(null);
 
   const sessionId = student?.sessionId;
 
@@ -1074,38 +1075,36 @@ function ChatPanel({ student }) {
     historyQuery.fetchPreviousPage,
   ]);
 
-  // Close the prompt list when clicking anywhere else, or pressing Escape.
-  useEffect(() => {
-    if (!showOutline) return undefined;
+  // Work out which prompt is currently at the top of the chat.
+  const updateActiveDot = useCallback(() => {
+    const element = scrollRef.current;
 
-    const onPointerDown = (event) => {
-      if (
-        event.target.closest?.('[data-outline-panel]') ||
-        event.target.closest?.('[data-outline-toggle]')
-      ) {
-        return;
+    if (!element || messages.length === 0) return;
+
+    const containerTop = element.getBoundingClientRect().top;
+    let current = messages[0].id;
+
+    for (const message of messages) {
+      const target = document.getElementById(`prompt-${message.id}`);
+
+      if (!target) continue;
+
+      if (target.getBoundingClientRect().top - containerTop <= 120) {
+        current = message.id;
+      } else {
+        break;
       }
+    }
 
-      setShowOutline(false);
-    };
+    setActiveId(current);
+  }, [messages]);
 
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') setShowOutline(false);
-    };
-
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [showOutline]);
+  useEffect(() => {
+    updateActiveDot();
+  }, [updateActiveDot]);
 
   // Jump to a specific prompt in the conversation.
   const jumpToPrompt = useCallback((id) => {
-    setShowOutline(false);
-
     const target = document.getElementById(`prompt-${id}`);
 
     if (target) {
@@ -1123,6 +1122,7 @@ function ChatPanel({ student }) {
 
     nearBottom.current = distanceFromBottom < 120;
     setShowJump(distanceFromBottom > 300);
+    updateActiveDot();
 
     if (element.scrollTop <= 50) {
       void loadOlderMessages();
@@ -1181,64 +1181,7 @@ function ChatPanel({ student }) {
         student={student}
         onRefresh={() => void historyQuery.refetch()}
         isRefreshing={historyQuery.isFetching && !historyQuery.isLoading}
-        promptCount={`${messages.length}${historyQuery.hasPreviousPage ? '+' : ''}`}
-        outlineOpen={showOutline}
-        onToggleOutline={() => setShowOutline((open) => !open)}
       />
-
-      {/* Prompt outline: click a prompt to jump to it */}
-
-      {showOutline && (
-        <div data-outline-panel className="absolute right-4 top-14 z-20 flex max-h-[60vh] w-80 max-w-[calc(100%-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
-          <div className="shrink-0 border-b border-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:text-slate-200">
-            Prompts
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {historyQuery.hasPreviousPage && (
-              <button
-                type="button"
-                onClick={() => void loadOlderMessages()}
-                disabled={historyQuery.isFetchingPreviousPage}
-                className="w-full border-b border-slate-100 px-3 py-2 text-left text-xs font-medium text-blue-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:text-blue-400 dark:hover:bg-slate-800"
-              >
-                {historyQuery.isFetchingPreviousPage
-                  ? 'Loading...'
-                  : 'Load earlier prompts'}
-              </button>
-            )}
-
-            {messages.map((message, index) => (
-              <button
-                key={message.id}
-                type="button"
-                onClick={() => jumpToPrompt(message.id)}
-                className="flex w-full items-start gap-2 border-b border-slate-100 px-3 py-2 text-left text-xs transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"
-              >
-                <span className="mt-0.5 w-5 shrink-0 text-slate-400">
-                  {index + 1}
-                </span>
-
-                <span className="min-w-0 flex-1">
-                  <span className="line-clamp-2 break-words text-slate-700 dark:text-slate-200">
-                    {message.prompt}
-                  </span>
-
-                  <span className="mt-0.5 block text-[10px] text-slate-400">
-                    {formatTime(message.createdAt)}
-                  </span>
-                </span>
-              </button>
-            ))}
-
-            {messages.length === 0 && (
-              <p className="px-3 py-4 text-center text-xs text-slate-400">
-                No prompts yet
-              </p>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Only the conversation area scrolls */}
 
@@ -1310,6 +1253,67 @@ function ChatPanel({ student }) {
             )}
         </div>
       </div>
+
+      {/* Prompt navigator: one dot per prompt, hover to preview, click to jump */}
+
+      {messages.length > 1 && (
+        <>
+          <nav
+            aria-label="Prompts in this conversation"
+            className="absolute right-5 top-1/2 z-10 hidden max-h-[60%] -translate-y-1/2 flex-col items-center overflow-y-auto rounded-full bg-white/70 px-1 py-2 shadow-sm backdrop-blur [scrollbar-width:none] dark:bg-slate-900/70 sm:flex [&::-webkit-scrollbar]:hidden"
+            onMouseLeave={() => setHover(null)}
+          >
+            {messages.map((message, index) => {
+              const active = String(message.id) === String(activeId);
+
+              return (
+                <button
+                  key={message.id}
+                  type="button"
+                  aria-label={`Go to prompt ${index + 1}`}
+                  onClick={() => jumpToPrompt(message.id)}
+                  onMouseEnter={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+
+                    setHover({
+                      index,
+                      prompt: message.prompt,
+                      time: message.createdAt,
+                      top: rect.top + rect.height / 2,
+                      right: window.innerWidth - rect.left + 10,
+                    });
+                  }}
+                  className="flex h-4 w-6 shrink-0 items-center justify-center"
+                >
+                  <span
+                    className={`h-1.5 rounded-full transition-all ${
+                      active
+                        ? 'w-4 bg-blue-600'
+                        : 'w-2.5 bg-slate-300 hover:w-4 hover:bg-slate-500 dark:bg-slate-600 dark:hover:bg-slate-400'
+                    }`}
+                  />
+                </button>
+              );
+            })}
+          </nav>
+
+          {hover && (
+            <div
+              role="tooltip"
+              style={{ top: hover.top, right: hover.right }}
+              className="pointer-events-none fixed z-30 w-64 -translate-y-1/2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-xl dark:border-slate-700 dark:bg-slate-900"
+            >
+              <p className="mb-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+                Prompt {hover.index + 1} · {formatTime(hover.time)}
+              </p>
+
+              <p className="line-clamp-3 break-words text-slate-700 dark:text-slate-200">
+                {hover.prompt}
+              </p>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Jump to latest */}
 
