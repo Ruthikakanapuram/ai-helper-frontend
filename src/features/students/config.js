@@ -1,6 +1,6 @@
 // IMPORTANT: Replace these option values with exact values in common.enum.ts.
 // The NestJS DTO validates ENUM VALUES (not display labels).
-export const BRANCHES = ['CSE', 'ECE', 'EEE'];
+export const BRANCHES = ['CSE', 'AIML', 'DS'];
 export const YEARS = ['1', '2', '3', '4'];
 export const SECTIONS = ['A', 'B', 'C'];
 export const FIELDS = ['username','fullName','rollNumber','year','branch','section'];
