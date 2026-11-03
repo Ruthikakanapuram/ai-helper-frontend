@@ -345,12 +345,12 @@ function StudentActivityCard({ activity }) {
         <InfoPill icon={CalendarDays}>{formatDate(scheduledDate)}</InfoPill>
       </div>
 
-      {startedLabel || endedLabel ? (
-        <div className="grid grid-cols-2 gap-2">
-          <TimeBox label="Started" value={startedLabel || '—'} />
-          <TimeBox label="Ended" value={endedLabel || (isLive ? 'In progress' : '—')} />
-        </div>
-      ) : null}
+   {startedLabel || endedLabel ? (
+  <div className={`grid gap-2 ${endedLabel ? 'grid-cols-2' : 'grid-cols-1'}`}>
+    {startedLabel && <TimeBox label="Started" value={startedLabel} />}
+    {endedLabel && <TimeBox label="Ended" value={endedLabel} />}
+  </div>
+) : null}
 
       {/* Action */}
 
