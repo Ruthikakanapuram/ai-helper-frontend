@@ -1,5 +1,3 @@
-
-
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -26,6 +24,9 @@ const STATUSES = {
   ARCHIVED: { label: 'Archived', icon: Archive, style: 'bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-950 dark:text-violet-300 dark:ring-violet-900' },
 };
 const STATUS_ORDER = { SCHEDULED: 0, PUBLISHED: 1, CLOSED: 2, ARCHIVED: 3 };
+
+// Order inside "Today's Activities": live first, then scheduled, then finished.
+const TODAY_ORDER = { PUBLISHED: 0, SCHEDULED: 1, CLOSED: 2, ARCHIVED: 3 };
 
 // ScheduledDate is a date-only DB field. Never interpret YYYY-MM-DD as an instant.
 function scheduledDay(value) {
@@ -159,10 +160,11 @@ export function TeacherActivities() {
   });
   const busy = start.isPending || stop.isPending;
 
-  // Show only activities scheduled for today that have not started.
+  // Every activity scheduled for today, whatever its status
+  // (live, scheduled, stopped, archived).
   const todayActivities = useMemo(() => activities
-    .filter((activity) => activity.status === 'SCHEDULED' && scheduledDay(activity.scheduledDate) === today)
-    .sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99) || String(a.title ?? '').localeCompare(String(b.title ?? ''))),
+    .filter((activity) => scheduledDay(activity.scheduledDate) === today)
+    .sort((a, b) => (TODAY_ORDER[a.status] ?? 99) - (TODAY_ORDER[b.status] ?? 99) || String(a.title ?? '').localeCompare(String(b.title ?? ''))),
   [activities, today]);
 
   const filtered = useMemo(() => {
@@ -248,18 +250,20 @@ export function TeacherActivities() {
       <section aria-labelledby="today-activities-heading" className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4 dark:border-blue-900 dark:bg-blue-950/20 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 id="today-activities-heading" className="flex items-center gap-2 text-base font-bold"><CalendarClock size={19} className="text-blue-600" /> Today's Scheduled Activities</h2>
+            <h2 id="today-activities-heading" className="flex items-center gap-2 text-base font-bold"><CalendarClock size={19} className="text-blue-600" /> Scheduled Activities</h2>
             <p className="mt-1 text-xs text-slate-500">{formatDate(today)}</p>
           </div>
-          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700">{todayActivities.length} scheduled</span>
+          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700">
+            {todayActivities.length} {todayActivities.length === 1 ? 'activity' : 'activities'}
+          </span>
         </div>
         {q.isPending ? <Loading rows={2} /> : q.isError ? (
           <p className="text-sm text-rose-600">Unable to load today's activities.</p>
         ) : todayActivities.length === 0 ? (
           <div className="rounded-xl border border-dashed border-blue-200 bg-white/80 px-4 py-6 text-center dark:border-slate-700 dark:bg-slate-900/60">
             <CalendarDays size={24} className="mx-auto mb-2 text-slate-400" />
-            <p className="font-medium">No scheduled activities today.</p>
-            <p className="mt-1 text-sm text-slate-500">Activities scheduled for today and not yet started will appear here.</p>
+            <p className="font-medium">No activities today.</p>
+            <p className="mt-1 text-sm text-slate-500">Activities scheduled for today will appear here, whether they are scheduled, live or stopped.</p>
           </div>
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">
@@ -272,10 +276,12 @@ export function TeacherActivities() {
                     <span className="inline-flex items-center gap-1"><Clock size={13} /> {activity.duration ?? '—'} min</span>
                     <StatusBadge status={activity.status} />
                   </div>
-                  {/* <p className="text-xs text-slate-400" title="Scheduled time is not present in the activity API response">Scheduled time: not specified</p> */}
                   {activity.startedAt && <p className="text-xs text-emerald-700 dark:text-emerald-400">Started: {formatDateTime(activity.startedAt)}</p>}
+                  {activity.endedAt && <p className="text-xs text-slate-500 dark:text-slate-400">Ended: {formatDateTime(activity.endedAt)}</p>}
                 </div>
-                {activity.status === 'SCHEDULED' && <GreenStartButton activity={activity} onStart={(id) => start.mutate(id)} busy={busy} />}
+                <div className="shrink-0">
+                  <ActivityActions activity={activity} onStart={(id) => start.mutate(id)} onStop={(id) => stop.mutate(id)} busy={busy} />
+                </div>
               </div>
             ))}
           </div>
