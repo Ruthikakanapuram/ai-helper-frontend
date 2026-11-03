@@ -1,485 +1,356 @@
+
 import { useMemo, useState } from 'react';
-import { useNavigate, Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useForm } from '@tanstack/react-form';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
-  createColumnHelper,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
+  createColumnHelper, flexRender, getCoreRowModel, useReactTable,
 } from '@tanstack/react-table';
-import { ArrowLeft, Check, Search, Users } from 'lucide-react';
+import { ArrowLeft, Check, Search, Users, Filter, Clock3 } from 'lucide-react';
 import { toast } from 'sonner';
-
 import { api } from '../../lib/api';
-import { activitySchema } from '../../lib/schemas';
 import { keys, queryClient } from '../../lib/query';
-import { Button, Card, ErrorState, Loading, Spinner } from '../../components/ui';
+import { Card, ErrorState, Loading, Spinner } from '../../components/ui';
 
 const helper = createColumnHelper();
+const DURATIONS = [5,10,15,20, 25, 30, 35, 40, 45, 50, 55, 60];
+const BRANCHES = ['CSE', 'AIML', 'DS'];
+const YEARS = [1, 2, 3, 4];
+const SECTIONS = ['A', 'B', 'C', 'D'];
 
-// Quick-pick buttons + a dropdown with every 5 minutes (5, 10, ... 120)
-const QUICK_DURATIONS = [20, 30, 45];
-const DURATION_OPTIONS = Array.from({ length: 24 }, (_, i) => (i + 1) * 5);
-
-function getTodayDate() {
+function todayLocal() {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
 function normalizeStudents(data) {
-  const rows = Array.isArray(data)
-    ? data
-    : Array.isArray(data?.students)
-      ? data.students
-      : [];
-
-  return rows.map((student) => ({
-    ...student,
-    id: Number(student.id),
-    name: student.fullName ?? student.name ?? student.user?.fullName ?? '',
-    rollNumber: String(student.rollNumber ?? ''),
-    branch: student.branch ?? '',
-    year: student.year ?? '',
-    section: student.section ?? '',
-  }));
+  const rows = Array.isArray(data) ? data : Array.isArray(data?.students) ? data.students : [];
+  return rows.map((s) => ({
+    ...s,
+    id: Number(s.id),
+    name: s.fullName ?? s.name ?? s.user?.fullName ?? '',
+    username: String(s.username ?? s.user?.username ?? ''),
+  })).filter((s) => Number.isSafeInteger(s.id) && s.id > 0);
 }
 
-function FieldErrors({ errors, fallback }) {
-  return errors.slice(0, 1).map((error, index) => {
-    const message = String(error?.message ?? error);
-    const text =
-      fallback && /^(invalid input|required)$/i.test(message.trim())
-        ? fallback
-        : message;
-
-    return (
-      <p key={index} className="mt-1 text-xs text-rose-600">
-        {text}
-      </p>
-    );
-  });
+function getValidationMessage(values, selectionCount) {
+  if (!values.name?.trim()) return 'Please enter an activity title.';
+  if (!values.scheduledDate) return 'Please select a scheduled date.';
+  if (values.scheduledDate < todayLocal()) return 'Scheduled date cannot be in the past.';
+  if (!DURATIONS.includes(Number(values.duration))) return 'Please choose a valid session duration.';
+  if (selectionCount < 1) return 'Please select at least one student.';
+  return null;
 }
 
 export function CreateActivity() {
   const navigate = useNavigate();
-
   const [branch, setBranch] = useState('');
   const [year, setYear] = useState('');
   const [section, setSection] = useState('');
+  const [appliedFilters, setAppliedFilters] = useState(null);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState([]);
 
+  const filtersChanged = Boolean(appliedFilters) && (
+    appliedFilters.branch !== branch ||
+    appliedFilters.year !== year ||
+    appliedFilters.section !== section
+  );
+  const showStudents = Boolean(appliedFilters) && !filtersChanged;
+
   const students = useQuery({
-    queryKey: keys.students(branch, year, section),
-    queryFn: () => api.getStudentsByFilter(branch, year, section),
+    queryKey: keys.students(
+      appliedFilters?.branch ?? '',
+      appliedFilters?.year ?? '',
+      appliedFilters?.section ?? '',
+    ),
+    queryFn: () => api.getStudentsByFilter(
+      appliedFilters.branch, appliedFilters.year, appliedFilters.section,
+    ),
+    enabled: showStudents,
+    staleTime: 30_000,
   });
 
   const studentRows = useMemo(() => normalizeStudents(students.data), [students.data]);
-
   const shown = useMemo(() => {
+    if (!showStudents) return [];
     const term = search.trim().toLowerCase();
-    if (!term) return studentRows;
-    return studentRows.filter(
-      (s) => s.rollNumber.toLowerCase().includes(term) || s.name.toLowerCase().includes(term),
-    );
-  }, [studentRows, search]);
+    return term ? studentRows.filter((s) =>
+      s.username.toLowerCase().includes(term) || s.name.toLowerCase().includes(term)
+    ) : studentRows;
+  }, [studentRows, search, showStudents]);
 
   const mutation = useMutation({
-    mutationFn: (values) =>
-      api.createActivity({
-        title: values.name.trim(),
-        description: values.description?.trim() || '',
-        duration: values.duration,
-        scheduledDate: values.scheduledDate,
-        studentIds: values.studentIds.map(Number),
-      }),
+    mutationFn: (values) => api.createActivity({
+      title: values.name.trim(),
+      description: values.description?.trim() || '',
+      duration: Number(values.duration),
+      scheduledDate: values.scheduledDate,
+      studentIds: values.studentIds.map(Number),
+    }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.activities });
       void queryClient.invalidateQueries({ queryKey: keys.stats });
       toast.success('Activity created successfully');
       void navigate({ to: '/teacher/activities' });
     },
-    onError: (error) => toast.error(error.message || 'Failed to create activity'),
+    onError: (error) => toast.error(error?.message || 'Failed to create activity.'),
   });
 
   const form = useForm({
     defaultValues: {
-      name: '',
-      description: '',
-      duration: 30,
-    scheduledDate: getTodayDate(),
-      studentIds: [],
+      name: '', description: '', duration: 20,
+      scheduledDate: todayLocal(), studentIds: [],
     },
-    validators: { onSubmit: activitySchema },
     onSubmit: async ({ value }) => {
+      const message = getValidationMessage(value, value.studentIds.length);
+      if (message) { toast.error(message); return; }
       await mutation.mutateAsync(value);
     },
   });
 
   function select(ids) {
-    const numericIds = [...new Set(ids.map(Number))];
+    const numericIds = [...new Set(ids.map(Number))].filter((id) => Number.isSafeInteger(id) && id > 0);
     setSelected(numericIds);
     form.setFieldValue('studentIds', numericIds);
   }
 
   function toggle(id) {
     const numericId = Number(id);
-    select(
-      selected.includes(numericId)
-        ? selected.filter((v) => v !== numericId)
-        : [...selected, numericId],
-    );
+    select(selected.includes(numericId)
+      ? selected.filter((v) => v !== numericId)
+      : [...selected, numericId]);
   }
 
-  const filteredIds = shown.map((s) => s.id);
-  const allChecked = filteredIds.length > 0 && filteredIds.every((id) => selected.includes(id));
+  function applyFilters() {
+    if (!branch || !year || !section) {
+      toast.error('Please select Branch, Year, and Section before clicking GO.');
+      return;
+    }
+    setSearch('');
+    setAppliedFilters({ branch, year, section });
+  }
 
-  const columns = [
+  function cancel() {
+    // Navigate to the previous browser page; fall back to Activities.
+    if (window.history.length > 1) window.history.back();
+    else void navigate({ to: '/teacher/activities' });
+  }
+
+  const columns = useMemo(() => [
     helper.display({
       id: 'check',
-      header: () => (
+      header: 'Select',
+      cell: (info) => (
         <input
-          aria-label="Select all visible students"
           type="checkbox"
-          checked={allChecked}
-          onChange={() =>
-            select(
-              allChecked
-                ? selected.filter((id) => !filteredIds.includes(id))
-                : [...selected, ...filteredIds],
-            )
-          }
+          aria-label={`Select ${info.row.original.username || info.row.original.name}`}
+          checked={selected.includes(info.row.original.id)}
+          onClick={(event) => event.stopPropagation()}
+          onChange={() => toggle(info.row.original.id)}
         />
       ),
-      cell: (info) => {
-        const student = info.row.original;
-        return (
-          <input
-            type="checkbox"
-            aria-label={`Select ${student.rollNumber}`}
-            checked={selected.includes(student.id)}
-            onClick={(e) => e.stopPropagation()}
-            onChange={() => toggle(student.id)}
-          />
-        );
-      },
     }),
-    helper.accessor('rollNumber', {
-      header: 'Roll number',
-      cell: (info) => <span className="font-semibold">{info.getValue()}</span>,
+    helper.accessor('username', {
+      header: 'Username',
+      cell: (info) => <span className="font-semibold">{info.getValue() || '—'}</span>,
     }),
-    helper.accessor('name', { header: 'Student', cell: (info) => info.getValue() || '—' }),
-    helper.accessor('branch', { header: 'Branch' }),
-    helper.accessor('year', { header: 'Year' }),
-    helper.accessor('section', { header: 'Section' }),
-  ];
+    helper.accessor('name', {
+      header: 'Name',
+      cell: (info) => info.getValue() || '—',
+    }),
+  ], [selected]);
 
   const table = useReactTable({ data: shown, columns, getCoreRowModel: getCoreRowModel() });
 
   return (
-    // On lg screens the page is exactly the viewport height minus the shell's
-    // vertical padding (lg:py-10 = 5rem), so only the student table scrolls.
     <form
       onSubmit={(event) => {
         event.preventDefault();
         event.stopPropagation();
+        const values = form.state.values;
+        const message = getValidationMessage(values, selected.length);
+        if (message) { toast.error(message); return; }
         void form.handleSubmit();
       }}
-      className="flex flex-col gap-4 lg:h-[calc(100dvh-5rem)] lg:min-h-[640px]"
+      className="flex min-w-0 flex-col gap-4 pb-4 lg:min-h-[calc(100dvh-7rem)]"
     >
-      {/* Slim header: title on the left, actions on the right */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <Link
-            to="/teacher/activities"
-            className="muted mb-1 inline-flex items-center gap-1.5 hover:text-blue-600"
-          >
-            <ArrowLeft size={14} />
-            Back to activities
-          </Link>
-          <h1 className="text-2xl font-bold tracking-tight">Create an activity</h1>
-        </div>
-
-        <div className="flex gap-2">
-          <Link to="/teacher/activities" className="btn-outline">
-            Cancel
-          </Link>
-          <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? <Spinner /> : <Check size={16} />}
-            Create activity
-          </Button>
-        </div>
+      <div className="flex flex-col gap-1">
+        <Link to="/teacher/activities" className="muted inline-flex w-fit items-center gap-1.5 hover:text-blue-600">
+          <ArrowLeft size={15} /> Back to activities
+        </Link>
+        <h1 className="text-2xl font-bold tracking-tight">New Activity</h1>
+        <p className="muted text-sm">Enter activity details, filter students, and enroll at least one student.</p>
       </div>
 
-      {/* ONE card: details on top, students below */}
-      <Card className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-5">
-        {/* Row 1: title | date | duration */}
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px_auto]">
+      <Card className="min-w-0 p-4 sm:p-5 lg:p-6">
+        {/* Title gets two-thirds of the desktop row. */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(175px,1fr)_minmax(170px,1fr)]">
           <form.Field name="name">
             {(field) => (
-              <div>
-                <label className="field-label" htmlFor="activity-title">
-                  Activity Title <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  id="activity-title"
-                  className="input"
-                  placeholder="e.g. Digital Safety Workshop"
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
+              <div className="min-w-0">
+                <label htmlFor="activity-title" className="field-label">Activity Title <span className="text-rose-500">*</span></label>
+                <input id="activity-title" className="input w-full" placeholder="e.g. Digital Safety and Responsible Internet Use Workshop"
+                  value={field.state.value} onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
                 />
-                <FieldErrors errors={field.state.meta.errors} />
               </div>
             )}
           </form.Field>
 
           <form.Field name="scheduledDate">
             {(field) => (
-              <div>
-                <label htmlFor="scheduledDate" className="field-label">
-                  Scheduled Date <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  id="scheduledDate"
-                  type="date"
-                  min={getTodayDate()}
-                  className="input"
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
+              <div className="min-w-0">
+                <label htmlFor="activity-date" className="field-label">Scheduled Date <span className="text-rose-500">*</span></label>
+                <input id="activity-date" type="date" min={todayLocal()} className="input w-full"
+                  value={field.state.value} onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
                 />
-                <FieldErrors errors={field.state.meta.errors} />
               </div>
             )}
           </form.Field>
 
           <form.Field name="duration">
             {(field) => (
-              <div>
-                <span className="field-label">
-                  Session Duration <span className="text-rose-500">*</span>
-                </span>
-                <div
-                  className="flex flex-wrap items-center gap-2"
-                  role="group"
-                  aria-label="Session duration"
-                >
-                  {QUICK_DURATIONS.map((minutes) => (
-                    <button
-                      key={minutes}
-                      type="button"
-                      aria-pressed={field.state.value === minutes}
-                      onClick={() => field.handleChange(minutes)}
-                      className={`rounded-xl border px-3.5 py-2.5 text-sm font-bold transition-colors ${
-                        field.state.value === minutes
-                          ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-                          : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      {minutes} min
-                    </button>
-                  ))}
-
-                  <select
-                    aria-label="Choose session duration in minutes"
-                    className="input !w-[120px]"
-                    value={field.state.value}
-                    onChange={(e) => field.handleChange(Number(e.target.value))}
-                  >
-                    {DURATION_OPTIONS.map((minutes) => (
+              <div className="min-w-0">
+                <label htmlFor="activity-duration" className="field-label">Session Duration (in minutes) <span className="text-rose-500">*</span></label>
+                <div className="relative">
+                  <Clock3 size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <select id="activity-duration" className="input w-full !pl-9"
+                    value={field.state.value} onChange={(event) => field.handleChange(Number(event.target.value))}>
+                    {DURATIONS.map((minutes) => (
                       <option key={minutes} value={minutes}>
-                        {minutes} min
+                        {minutes} {minutes === 20 ? ' (Default)' : ''}
                       </option>
                     ))}
                   </select>
                 </div>
-                <FieldErrors
-                  errors={field.state.meta.errors}
-                  fallback="Select a duration between 5 and 120 min"
-                />
               </div>
             )}
           </form.Field>
         </div>
 
-        {/* Row 2: description, full width */}
         <form.Field name="description">
           {(field) => (
-            <div className="mt-3">
-              <label htmlFor="description" className="field-label">
-                Description
-              </label>
-              <textarea
-                id="description"
-                rows={2}
-                className="input resize-none"
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
+            <div className="mt-4">
+              <label htmlFor="activity-description" className="field-label">Description <span className="muted text-xs">(optional)</span></label>
+              <textarea id="activity-description" rows={3} className="input w-full resize-y"
                 placeholder="Describe the topic, learning objectives, and what students should learn."
+                value={field.state.value} onBlur={field.handleBlur}
+                onChange={(event) => field.handleChange(event.target.value)}
               />
-              <FieldErrors errors={field.state.meta.errors} />
             </div>
           )}
         </form.Field>
+      </Card>
 
-        <hr className="my-4 border-slate-200 dark:border-slate-800" />
-
-        {/* Assign students: fills the remaining height */}
-        <div className="flex min-h-0 flex-1 flex-col">
-          {/* Heading | Branch | Year | Section | selected: one row */}
-          <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-            <div className="mr-auto min-w-[190px]">
-              <div className="flex flex-wrap items-center gap-x-3">
-                <h2 className="text-base font-bold leading-tight">Assign students</h2>
-
-                <form.Field name="studentIds">
-                  {(field) =>
-                    field.state.meta.errors.length > 0 && selected.length === 0 ? (
-                      <span role="alert" className="text-xs font-semibold text-rose-600">
-                        {String(
-                          field.state.meta.errors[0]?.message ?? field.state.meta.errors[0],
-                        )}
-                      </span>
-                    ) : null
-                  }
-                </form.Field>
-              </div>
-              <p className="muted text-xs">Selection persists when you change filters.</p>
-            </div>
-
-            <select
-  aria-label="Branch"
-  className="input !w-36 !py-2 !text-sm"
-  value={branch}
-  onChange={(e) => setBranch(e.target.value)}
->
-  <option value="">All branches</option>
-  {['CSE', 'AIML', 'DS'].map((v) => (
-    <option key={v} value={v}>
-      {v}
-    </option>
-  ))}
-</select>
-
-           <select
-  aria-label="Year"
-  className="input !w-32 !py-2 !text-sm"
-  value={year}
-  onChange={(e) => setYear(e.target.value)}
->
-  <option value="">All years</option>
-  {[1, 2, 3, 4].map((v) => (
-    <option key={v} value={v}>
-      Year {v}
-    </option>
-  ))}
-</select>
-
-           <select
-  aria-label="Section"
-  className="input !w-36 !py-2 !text-sm"
-  value={section}
-  onChange={(e) => setSection(e.target.value)}
->
-  <option value="">All sections</option>
-  {['A', 'B', 'C', 'D'].map((v) => (
-    <option key={v} value={v}>
-      Section {v}
-    </option>
-  ))}
-</select>
-
-            <span className="whitespace-nowrap rounded-full bg-blue-100 px-3 py-1.5 text-sm font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-              <Users size={15} className="mr-1 inline" />
-              {selected.length} selected
+      <Card className="min-w-0 p-4 sm:p-5 lg:flex-1 lg:p-6">
+        <div className="mb-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-lg font-bold">Enroll students <span className="text-rose-500">*</span></h2>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-1.5 text-sm font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+              <Users size={15} /> {selected.length} selected
             </span>
           </div>
+          <p className="muted mt-1 text-xs">Choose Branch, Year, and Section, then click GO to load students.</p>
+        </div>
 
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
-              <input
-                className="input !py-2 !text-sm pl-9"
-                aria-label="Search students"
-                value={search}
-                placeholder="Search roll number or name"
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => select([...new Set([...selected, ...filteredIds])])}
-              >
-                Select All
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => select([])}>
-                Clear all
-              </Button>
-            </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] lg:items-end">
+          <div>
+            <label htmlFor="filter-branch" className="field-label">Branch</label>
+            <select id="filter-branch" className="input w-full" value={branch} onChange={(event) => setBranch(event.target.value)}>
+              <option value="">Select branch</option>
+              {BRANCHES.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
           </div>
+          <div>
+            <label htmlFor="filter-year" className="field-label">Year</label>
+            <select id="filter-year" className="input w-full" value={year} onChange={(event) => setYear(event.target.value)}>
+              <option value="">Select year</option>
+              {YEARS.map((value) => <option key={value} value={value}>Year {value}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="filter-section" className="field-label">Section</label>
+            <select id="filter-section" className="input w-full" value={section} onChange={(event) => setSection(event.target.value)}>
+              <option value="">Select section</option>
+              {SECTIONS.map((value) => <option key={value} value={value}>Section {value}</option>)}
+            </select>
+          </div>
+          <button type="button" onClick={applyFilters} disabled={!branch || !year || !section}
+            className="btn-primary flex w-full items-center justify-center gap-2 sm:col-span-2 lg:col-span-1 lg:w-24">
+            <Filter size={16} /> GO
+          </button>
+        </div>
 
-          {students.isPending ? (
-            <Loading rows={5} />
-          ) : students.isError ? (
-            <ErrorState error={students.error} retry={() => void students.refetch()} />
-          ) : (
-            <div className="max-h-[55vh] min-h-[240px] flex-1 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 lg:max-h-none">
-              <table className="w-full min-w-[560px] text-left text-sm">
-                <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800">
-                  {table.getHeaderGroups().map((group) => (
-                    <tr key={group.id}>
-                      {group.headers.map((header) => (
-                        <th key={header.id} className="px-4 py-2.5">
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                        </th>
-                      ))}
-                    </tr>
-                  ))}
-                </thead>
-                <tbody>
-                  {table.getRowModel().rows.map((row) => {
-                    const checked = selected.includes(row.original.id);
-                    return (
-                      <tr
-                        key={row.id}
-                        onClick={() => toggle(row.original.id)}
-                        className={`cursor-pointer border-t border-slate-100 dark:border-slate-800 ${
-                          checked
-                            ? 'bg-blue-50 dark:bg-blue-950/40'
-                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                        }`}
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <td key={cell.id} className="px-4 py-2">
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </td>
+        {!showStudents ? (
+          <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center dark:border-slate-700 dark:bg-slate-800/40">
+            <Users size={28} className="mx-auto mb-2 text-slate-400" />
+            <p className="font-medium">{filtersChanged ? 'Filters changed — click GO to load students' : 'Select your class to view students'}</p>
+            <p className="muted mt-1 text-sm">The list appears only after Branch, Year, and Section are selected and GO is clicked.</p>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <div className="relative w-full sm:max-w-sm">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input aria-label="Search students" className="input w-full !pl-9" placeholder="Search username or name"
+                value={search} onChange={(event) => setSearch(event.target.value)} />
+            </div>
+
+            {students.isPending ? <Loading rows={5} /> : students.isError ? (
+              <ErrorState error={students.error} retry={() => void students.refetch()} />
+            ) : (
+              <div className="max-h-[45vh] min-h-[180px] overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 lg:max-h-[420px]">
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800">
+                    {table.getHeaderGroups().map((group) => (
+                      <tr key={group.id}>
+                        {group.headers.map((header) => (
+                          <th key={header.id} className="px-4 py-3">{flexRender(header.column.columnDef.header, header.getContext())}</th>
                         ))}
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-
-              {shown.length === 0 && (
-                <p className="muted py-8 text-center">No matching students.</p>
-              )}
-            </div>
-          )}
-
-          <p className="muted mt-2 text-xs">
-            Showing {shown.length} of {studentRows.length} students
-          </p>
-        </div>
+                    ))}
+                  </thead>
+                  <tbody>
+                    {table.getRowModel().rows.map((row) => {
+                      const checked = selected.includes(row.original.id);
+                      return (
+                        <tr key={row.id} onClick={() => toggle(row.original.id)}
+                          className={`cursor-pointer border-t border-slate-100 dark:border-slate-800 ${checked ? 'bg-blue-50 dark:bg-blue-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+                          {row.getVisibleCells().map((cell) => (
+                            <td key={cell.id} className="px-4 py-2.5">{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {shown.length === 0 && <p className="muted py-8 text-center">No students found for this filter.</p>}
+              </div>
+            )}
+            <p className="muted text-xs">Showing {shown.length} of {studentRows.length} students</p>
+          </div>
+        )}
       </Card>
+
+      <form.Subscribe selector={(state) => state.values}>
+        {(values) => {
+          const valid = !getValidationMessage(values, selected.length);
+          return (
+            <div className="sticky bottom-0 z-20 flex flex-wrap justify-end gap-3 border-t border-slate-200 bg-white/95 px-3 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 sm:px-0">
+              <button type="button" className="btn-outline min-w-[110px] px-5" onClick={cancel} disabled={mutation.isPending}>
+                Cancel
+              </button>
+              <button type="submit" disabled={!valid || mutation.isPending}
+                className="btn-primary inline-flex min-w-[150px] items-center justify-center gap-2 px-5 disabled:cursor-not-allowed disabled:opacity-50"
+                title={!valid ? getValidationMessage(values, selected.length) : 'Save activity'}>
+                {mutation.isPending ? <Spinner /> : <Check size={17} />}
+                {mutation.isPending ? 'Saving...' : 'Save Activity'}
+              </button>
+            </div>
+          );
+        }}
+      </form.Subscribe>
     </form>
   );
 }
