@@ -1,7 +1,7 @@
 
-export const ROOT =  import.meta.env.VITE_USE_MOCKS === 'false'
-    ? import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
-    : '/api';
+export const ROOT = import.meta.env.VITE_USE_MOCKS === 'false'
+  ? import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+  : '/api';
 
 // Get the stored JWT
 export function getAccessToken() {
@@ -43,18 +43,80 @@ export function decodeToken(token) {
 }
 
 // Shared HTTP request function
+// async function request(path, init = {}) {
+//   const token = getAccessToken();
+
+//   const response = await fetch(`${ROOT}${path}`, {
+//     ...init,
+//     headers: {
+//       'Content-Type': 'application/json',
+//       ...(token
+//         ? { Authorization: `Bearer ${token}` }
+//         : {}),
+//       ...init.headers,
+//     },
+//   });
+
+//   if (!response.ok) {
+//     let description = `Request failed (${response.status})`;
+
+//     try {
+//       const error = await response.json();
+
+//       if (error.message) {
+//         description = Array.isArray(error.message)
+//           ? error.message.join(', ')
+//           : error.message;
+//       }
+//     } catch {
+//       // Non-JSON error response
+//     }
+
+//     throw new Error(description);
+//   }
+
+//   if (response.status === 204) {
+//     return null;
+//   }
+
+//   return response.json();
+// }
+
 async function request(path, init = {}) {
   const token = getAccessToken();
 
+  // Check whether request body contains files.
+  const isFormData =
+    typeof FormData !== 'undefined' &&
+    init.body instanceof FormData;
+
+  // Preserve any custom headers.
+  const headers = new Headers(init.headers || {});
+
+  // Set Content-Type only for JSON requests.
+  if (isFormData) {
+    // Browser automatically sets multipart/form-data
+    // with the correct boundary.
+    headers.delete('Content-Type');
+  } else if (
+    init.body !== undefined &&
+    init.body !== null &&
+    !headers.has('Content-Type')
+  ) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  // Add JWT authentication.
+  if (token) {
+    headers.set(
+      'Authorization',
+      `Bearer ${token}`
+    );
+  }
+
   const response = await fetch(`${ROOT}${path}`, {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token
-        ? { Authorization: `Bearer ${token}` }
-        : {}),
-      ...init.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -130,11 +192,51 @@ export const api = {
   getActivity: (id) =>
     request(`/activities/${id}`),
 
-  createActivity: (body) =>
+  // createActivity: (body) =>
+  //   request('/activities', {
+  //     method: 'POST',
+  //     body: json(body),
+  //   }),
+  createActivity: (formData) =>
     request('/activities', {
       method: 'POST',
-      body: json(body),
+      body: formData,
     }),
+
+
+  //get activity file by activity id
+
+  getActivityAttachment: async (activityId) => {
+    const token = getAccessToken();
+
+    const response = await fetch(
+      `${ROOT}/activities/${encodeURIComponent(activityId)}/file`,
+      {
+        headers: token
+          ? { Authorization: `Bearer ${token}` }
+          : {},
+      }
+    );
+
+    if (!response.ok) {
+      let message = 'Unable to retrieve activity file';
+
+      try {
+        const error = await response.json();
+        message = Array.isArray(error.message)
+          ? error.message.join(', ')
+          : error.message || message;
+      } catch {
+        // Keep the fallback message.
+      }
+
+      throw new Error(message);
+    }
+
+    return response.blob();
+  },
+
+
   // Teacher activity monitoring
   getActivityMonitor: (activityId) =>
     request(`/activities/${encodeURIComponent(activityId)}/monitor`),
@@ -154,46 +256,46 @@ export const api = {
     );
   },
 
-updateActivityStatus: (id, status) =>
-  request(`/activities/${id}/status`, {
-    method: 'PATCH',
-    body: JSON.stringify({ status }),
-  }),
-
-startActivity: (id) =>
-  request(`/activities/${id}/status`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      status: 'PUBLISHED',
+  updateActivityStatus: (id, status) =>
+    request(`/activities/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
     }),
-  }),
 
-stopActivity: (id) =>
-  request(`/activities/${id}/status`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      status: 'CLOSED',
+  startActivity: (id) =>
+    request(`/activities/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: 'PUBLISHED',
+      }),
     }),
-  }),
+
+  stopActivity: (id) =>
+    request(`/activities/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: 'CLOSED',
+      }),
+    }),
 
 
   // Students
-    // Get students
+  // Get students
   // getStudentsList: () =>
   //   request('/students'),
-  
-  getStudentsList: (branch, year, section) => {
-  const params = new URLSearchParams({
-    branch: String(branch),
-    year: String(year),
-    section: String(section),
-  });
 
-  return request(
-    `/students/activities?${params.toString()}`
-  );
-},
-   getStudentsByFilter: (branch, year, section) =>
+  getStudentsList: (branch, year, section) => {
+    const params = new URLSearchParams({
+      branch: String(branch),
+      year: String(year),
+      section: String(section),
+    });
+
+    return request(
+      `/students/activities?${params.toString()}`
+    );
+  },
+  getStudentsByFilter: (branch, year, section) =>
     request(
       `/students?${new URLSearchParams({
         ...(branch ? { branch } : {}),
@@ -212,29 +314,54 @@ stopActivity: (id) =>
   // Chat sessions
 
 
-// Create the session on first entry.
-// Repeated calls return the existing session.
-enterActivity: (activityId) =>
-  request('/chat-sessions', {
-    method: 'POST',
-    body: JSON.stringify({
-      activityId: Number(activityId),
+  // Create the session on first entry.
+  // Repeated calls return the existing session.
+  enterActivity: (activityId) =>
+    request('/chat-sessions', {
+      method: 'POST',
+      body: JSON.stringify({
+        activityId: Number(activityId),
+      }),
     }),
-  }),
 
-// Confirmed only if your ChatSessionsController
-// exposes GET /chat-sessions/:id.
-getChatSessionById: (sessionId) =>
-  request(`/chat-sessions/${sessionId}`),
-  sendMessage: (activityId, studentId, content) =>
-    request(
-      `/activities/${activityId}/sessions/${studentId}/messages`,
-      {
-        method: 'POST',
-        body: json({ content }),
-      }
-    ),
+  // Confirmed only if your ChatSessionsController
+  // exposes GET /chat-sessions/:id.
+  getChatSessionById: (sessionId) =>
+    request(`/chat-sessions/${sessionId}`),
+  // sendMessage: (activityId, studentId, content) =>
+  //   request(
+  //     `/activities/${activityId}/sessions/${studentId}/messages`,
+  //     {
+  //       method: 'POST',
+  //       body: json({ content }),
+  //     }
+  //   ),
 
+  sendChatPrompt: (
+    sessionId,
+    prompt,
+    clientRequestId,
+    useActivityFile = false
+  ) => {
+    const payload = {
+      sessionId: Number(sessionId),
+      prompt,
+      clientRequestId,
+      useActivityFile: Boolean(useActivityFile),
+    };
+
+    const body = JSON.stringify(payload);
+
+    // console.log('[API] Final request body:', body);
+
+    return request('/chat-messages/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body,
+    });
+  },
   endSession: (activityId, studentId) =>
     request(
       `/activities/${activityId}/sessions/${studentId}/end`,
@@ -243,21 +370,34 @@ getChatSessionById: (sessionId) =>
       }
     ),
 
-    //student chat
-    sendChatPrompt: (sessionId, prompt, clientRequestId) =>
-  request('/chat-messages/send', {
+  //student chat
+
+sendChatPrompt: (
+  sessionId,
+  prompt,
+  clientRequestId,
+  useActivityFile = false
+) => {
+  const payload = {
+    sessionId: Number(sessionId),
+    prompt,
+    clientRequestId,
+    useActivityFile: Boolean(useActivityFile),
+  };
+
+  console.log('[API] Sending chat payload:', payload);
+
+  return request('/chat-messages/send', {
     method: 'POST',
-    body: JSON.stringify({
-      sessionId: Number(sessionId),
-      prompt,
-      clientRequestId,
-    }),
-  }),
-//chat histry for student
-getChatHistory: (sessionId) =>
-  request(
-    `/chat-messages/session/${encodeURIComponent(sessionId)}/history`
-  ),
+    body: JSON.stringify(payload),
+  });
+},
+
+  //chat histry for student
+  getChatHistory: (sessionId) =>
+    request(
+      `/chat-messages/session/${encodeURIComponent(sessionId)}/history`
+    ),
   // Admin
   getStats: () =>
     request('/admin/stats'),

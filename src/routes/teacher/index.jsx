@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -8,7 +9,7 @@ import {
 import {
   Plus, Play, Square, Clock, CalendarDays, Search,
   ArrowUpDown, ArrowUp, ArrowDown, CalendarClock, RadioTower,
-  CircleCheck, Archive, ChevronRight, Info,
+  CircleCheck, Archive, ChevronRight, Info, FileText, ExternalLink, Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
@@ -72,6 +73,68 @@ function StatusBadge({ status }) {
       <Icon size={14} className={status === 'PUBLISHED' ? 'animate-pulse' : ''} />
       {config?.label ?? status ?? 'Unknown'}
     </span>
+  );
+}
+
+// Show attachment controls only when this activity has a stored file.
+function ActivityAttachment({ activity }) {
+  const [busy, setBusy] = useState(null);
+  if (!activity.filePath) return null;
+
+  const filename = String(activity.filePath).split(/[\\/]/).pop() || '';
+  const extension = filename.split('.').pop()?.toLowerCase() || '';
+  const canPreview = ['pdf', 'png', 'jpg', 'jpeg', 'webp'].includes(extension);
+
+  async function handleFile(action) {
+    if (busy) return;
+    // Open the tab synchronously to avoid browser popup blocking.
+    const tab = action === 'open' && canPreview
+      ? window.open('', '_blank')
+      : null;
+    if (tab) tab.opener = null;
+
+    setBusy(action);
+    try {
+      const blob = await api.getActivityAttachment(activity.id);
+      const objectUrl = URL.createObjectURL(blob);
+      if (action === 'open' && canPreview && tab) {
+        tab.location.href = objectUrl;
+        // Keep the object URL alive while the preview tab loads.
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      } else {
+        tab?.close();
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.download = `activity-${activity.id}.${extension || 'pdf'}`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+      }
+    } catch (error) {
+      tab?.close();
+      toast.error(error?.message || 'Unable to access the attachment');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+      <span className="inline-flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300">
+        <FileText size={14} /> Reference file
+      </span>
+      {canPreview && (
+        <button type="button" onClick={() => void handleFile('open')} disabled={Boolean(busy)}
+          className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 font-medium text-blue-700 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50 dark:border-slate-700 dark:text-blue-300 dark:hover:bg-slate-800">
+          <ExternalLink size={13} /> {busy === 'open' ? 'Opening...' : 'Open'}
+        </button>
+      )}
+      <button type="button" onClick={() => void handleFile('download')} disabled={Boolean(busy)}
+        className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 font-medium text-blue-700 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50 dark:border-slate-700 dark:text-blue-300 dark:hover:bg-slate-800">
+        <Download size={13} /> {busy === 'download' ? 'Downloading...' : 'Download'}
+      </button>
+    </div>
   );
 }
 
@@ -162,10 +225,31 @@ export function TeacherActivities() {
 
   // Every activity scheduled for today, whatever its status
   // (live, scheduled, stopped, archived).
-  const todayActivities = useMemo(() => activities
-    .filter((activity) => scheduledDay(activity.scheduledDate) === today)
-    .sort((a, b) => (TODAY_ORDER[a.status] ?? 99) - (TODAY_ORDER[b.status] ?? 99) || String(a.title ?? '').localeCompare(String(b.title ?? ''))),
-  [activities, today]);
+  // const todayActivities = useMemo(() => activities
+  //   .filter((activity) => scheduledDay(activity.scheduledDate) === today)
+  //   .sort((a, b) => (TODAY_ORDER[a.status] ?? 99) - (TODAY_ORDER[b.status] ?? 99) || String(a.title ?? '').localeCompare(String(b.title ?? ''))),
+  // [activities, today]);
+  
+const todayActivities = useMemo(() => {
+  return activities
+    .filter(
+      (activity) =>
+        scheduledDay(activity.scheduledDate) === today
+    )
+    .sort((a, b) => {
+      // Most recently created activity comes first.
+      const dateA = new Date(a.createdAt ?? 0).getTime();
+      const dateB = new Date(b.createdAt ?? 0).getTime();
+
+      if (dateA !== dateB) {
+        return dateB - dateA;
+      }
+
+      // Fallback: newest activity ID first.
+      return Number(b.id) - Number(a.id);
+    });
+}, [activities, today]);
+
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -199,6 +283,7 @@ export function TeacherActivities() {
                 <time dateTime={a.endedAt}>{formatDateTime(a.endedAt)}</time>
               </p>
             )}
+            <ActivityAttachment activity={a} />
           </div>
         );
       },
@@ -278,6 +363,7 @@ export function TeacherActivities() {
                   </div>
                   {activity.startedAt && <p className="text-xs text-emerald-700 dark:text-emerald-400">Started: {formatDateTime(activity.startedAt)}</p>}
                   {activity.endedAt && <p className="text-xs text-slate-500 dark:text-slate-400">Ended: {formatDateTime(activity.endedAt)}</p>}
+                  <ActivityAttachment activity={activity} />
                 </div>
                 <div className="shrink-0">
                   <ActivityActions activity={activity} onStart={(id) => start.mutate(id)} onStop={(id) => stop.mutate(id)} busy={busy} />

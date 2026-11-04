@@ -230,9 +230,9 @@ const logout = useAuth((state) => state.logout);
 
         </form>
 
-        <p className="muted mt-6 text-center text-xs">
+        {/* <p className="muted mt-6 text-center text-xs">
           Teacher, Student and Admin accounts supported
-        </p>
+        </p> */}
       </div>
     </div>
   );
