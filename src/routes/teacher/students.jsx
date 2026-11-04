@@ -647,23 +647,23 @@ import { toast } from 'sonner';
 import { Upload, Download, Search, ArrowUpDown, ArrowUp, ArrowDown, Plus, X, ArrowLeft, BookOpen, ChevronRight } from 'lucide-react';
 import { api } from '../../lib/api';
 import { Card, Button, Loading, Empty, ErrorState, SectionHeading } from '../../components/ui';
-import { BRANCHES, YEARS, SECTIONS, emptyStudent, validateStudent, cleanStudent, parseCsv, csvTemplate } from '../../features/students/config';
+import { BRANCHES, YEARS, SECTIONS, COLLEGES, emptyStudent, validateStudent, cleanStudent, parseCsv, csvTemplate } from '../../features/students/config';
 const studentCols = createColumnHelper();
 const cacheKey = ['teacher', 'students-list'];
 const fieldClass = 'input w-full';
-const labels = {username:'Username',fullName:'Full name',rollNumber:'Roll number (optional)',year:'Year',branch:'Branch',section:'Section'};
+const labels = {username:'Username',fullName:'Full name',rollNumber:'Roll number (optional)',year:'Year',branch:'Branch',section:'Section',college:'College'};
 function StudentFields({ value, onChange, errors={} }) {
   return <div className="grid gap-4 sm:grid-cols-2">
     {Object.keys(labels).map(key=><label className="block" key={key}><span className="field-label">{labels[key]}</span>
-      {['year','branch','section'].includes(key)?<select className={fieldClass} value={value[key]} onChange={e=>onChange({...value,[key]:e.target.value})}>
-        <option value="">Select {key}</option>{(key==='year'?YEARS:key==='branch'?BRANCHES:SECTIONS).map(v=><option key={v} value={v}>{v}</option>)}
+      {['year','branch','section','college'].includes(key)?<select className={fieldClass} value={value[key]} onChange={e=>onChange({...value,[key]:e.target.value})}>
+        <option value="">Select {key}</option>{(key==='year'?YEARS:key==='branch'?BRANCHES:key==='section'?SECTIONS:COLLEGES).map(v=><option key={v} value={v}>{v}</option>)}
       </select>:<input className={fieldClass} maxLength={key==='fullName'?150:key==='rollNumber'?50:100} value={value[key]} onChange={e=>onChange({...value,[key]:e.target.value})} autoComplete="off"/>}
       {errors[key]&&<span className="mt-1 block text-xs text-red-600">{errors[key]}</span>}
     </label>)}
   </div>;
 }
 function exportCredentials(students) {
-  const fields=['username','fullName','rollNumber','year','branch','section','temporaryPassword'];
+  const fields=['username','fullName','rollNumber','year','branch','section','college','temporaryPassword'];
   const escaped = v=>'"'+String(v??'').replaceAll('"','""')+'"';
   const text=[fields.join(','),...students.map(s=>fields.map(k=>escaped(s[k])).join(','))].join('\r\n');
   const url=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8'}));
@@ -689,9 +689,9 @@ export function AddBulk({onCreated}) {
  const invalid=rows.map((r,index)=>({index:index+2,errors:validateStudent(r)})).filter(x=>Object.keys(x.errors).length);
  function submit(){if(invalid.length||duplicateNames.length||!rows.length)return;mutation.mutate(rows.map(cleanStudent));}
  function downloadTemplate(){const url=URL.createObjectURL(new Blob([csvTemplate()],{type:'text/csv'}));const a=document.createElement('a');a.href=url;a.download='student-import-template.csv';a.click();URL.revokeObjectURL(url);}
- return <Card className="p-6"><h2 className="mb-2 text-lg font-bold">Bulk Student Add</h2><p className="muted mb-4 text-sm">CSV headers: username, fullName, rollNumber, year, branch, section.</p>
+ return <Card className="p-6"><h2 className="mb-2 text-lg font-bold">Bulk Student Add</h2><p className="muted mb-4 text-sm">CSV headers: username, fullName, rollNumber, year, branch, section, college.</p>
  <div className="flex flex-wrap gap-3"><Button type="button" variant="outline" onClick={downloadTemplate}><Download size={16}/> CSV template</Button><label className="btn-outline inline-flex cursor-pointer items-center gap-2"><Upload size={16}/> Select CSV<input type="file" accept=".csv,text/csv" onChange={readFile} className="sr-only"/></label></div>
- {rows.length>0&&<div className="mt-4"><p className="font-semibold">{rows.length} students ready for validation</p><div className="mt-2 max-h-60 overflow-auto rounded-lg border"><table className="w-full text-left text-xs"><thead><tr>{['Username','Full name','Roll','Year','Branch','Section'].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>{rows.slice(0,100).map((r,i)=><tr className="border-t" key={i}>{['username','fullName','rollNumber','year','branch','section'].map(k=><td className="p-2" key={k}>{r[k]}</td>)}</tr>)}</tbody></table></div>{rows.length>100&&<p className="muted text-xs">Showing first 100 rows</p>}</div>}
+ {rows.length>0&&<div className="mt-4"><p className="font-semibold">{rows.length} students ready for validation</p><div className="mt-2 max-h-60 overflow-auto rounded-lg border"><table className="w-full text-left text-xs"><thead><tr>{['Username','Full name','Roll','Year','Branch','Section','College'].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>{rows.slice(0,100).map((r,i)=><tr className="border-t" key={i}>{['username','fullName','rollNumber','year','branch','section','college'].map(k=><td className="p-2" key={k}>{r[k]}</td>)}</tr>)}</tbody></table></div>{rows.length>100&&<p className="muted text-xs">Showing first 100 rows</p>}</div>}
  {duplicateNames.length>0&&<p role="alert" className="mt-3 text-sm text-red-600">Duplicate usernames: {duplicateNames.join(', ')}</p>}
  {invalid.length>0&&<p role="alert" className="mt-3 text-sm text-red-600">Invalid rows: {invalid.slice(0,10).map(x=>`${x.index} (${Object.keys(x.errors).join(', ')})`).join('; ')}{invalid.length>10?' ...':''}</p>}
  {error&&<p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
@@ -713,13 +713,15 @@ const initialSection = String(searchParams.section ?? '');
 const [branch, setBranch] = useState(initialBranch);
 const [year, setYear] = useState(initialYear);
 const [section, setSection] = useState(initialSection);
+const [college, setCollege] = useState(String(searchParams.college ?? ''));
 
 const [applied, setApplied] = useState(() => {
-  if (initialBranch && initialYear && initialSection) {
+  if (initialBranch && initialYear && initialSection && searchParams.college) {
     return {
       branch: initialBranch,
       year: initialYear,
       section: initialSection,
+      college: String(searchParams.college),
     };
   }
 
@@ -750,20 +752,23 @@ const q = useQuery({
     applied?.branch ?? '',
     applied?.year ?? '',
     applied?.section ?? '',
+    applied?.college ?? '',
   ],
 
   queryFn: () =>
     api.getStudentsList(
       applied.branch,
       applied.year,
-      applied.section
+      applied.section,
+      applied.college
     ),
 
   // Do not fetch until the teacher clicks GO.
   enabled: Boolean(
     applied?.branch &&
     applied?.year &&
-    applied?.section
+    applied?.section &&
+    applied?.college
   ),
 
   staleTime: 30_000,
@@ -794,24 +799,25 @@ const q = useQuery({
     }));
   }, [q.data]);
 
-  // All three dropdowns are mandatory before GO.
+  // All four dropdowns are mandatory before GO.
   const filtersComplete = Boolean(
-    branch && year && section
+    branch && year && section && college
   );
 
   // Hide the old student list when dropdowns change.
 const filtersChanged = Boolean(applied) && (
   applied.branch !== branch ||
   applied.year !== year ||
-  applied.section !== section
+  applied.section !== section ||
+  applied.college !== college
 );
 
 const showStudents = Boolean(applied) && !filtersChanged;
 
 function handleGo() {
-  if (!branch || !year || !section) {
+  if (!branch || !year || !section || !college) {
     toast.error(
-      'Please select Branch, Year, and Section.'
+      'Please select Branch, Year, Section, and College.'
     );
     return;
   }
@@ -820,6 +826,7 @@ function handleGo() {
     branch,
     year: String(year),
     section,
+    college,
   });
 
   setSearchText('');
@@ -844,7 +851,9 @@ function handleGo() {
         String(student.year ?? '') ===
           String(applied.year) &&
         String(student.section ?? '').toLowerCase() ===
-          String(applied.section).toLowerCase();
+          String(applied.section).toLowerCase() &&
+        String(student.college ?? '').toLowerCase() ===
+          String(applied.college).toLowerCase();
 
       if (!matchesClass) {
         return false;
@@ -909,6 +918,7 @@ function handleGo() {
                 branch: applied.branch,
                 year: String(applied.year),
                 section: applied.section,
+                college: applied.college,
               }}
               aria-label={`View enrolled activities for ${student.fullName || student.username}`}
               className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300 dark:hover:bg-blue-900"
@@ -952,13 +962,13 @@ function handleGo() {
         </h2>
 
         <p className="mt-1 text-sm text-slate-500">
-          Select Branch, Year, and Section,
+          Select Branch, Year, Section, and College,
           then click GO to view students.
         </p>
       </div>
 
       {/* Dropdown filters and GO button */}
-      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto] lg:items-end">
 
         <label className="block min-w-0">
           <span className="field-label">
@@ -1032,9 +1042,33 @@ function handleGo() {
           </select>
         </label>
 
+        <label className="block min-w-0">
+          <span className="field-label">
+            College
+          </span>
+
+          <select
+            className="input w-full"
+            value={college}
+            onChange={(event) =>
+              setCollege(event.target.value)
+            }
+          >
+            <option value="">
+              Select College
+            </option>
+
+            {COLLEGES.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <button
           type="button"
-            disabled={!branch || !year || !section}
+            disabled={!branch || !year || !section || !college}
           onClick={handleGo}
           className="btn-primary inline-flex min-h-10 w-full items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2 lg:col-span-1 lg:w-24"
         >
@@ -1059,7 +1093,7 @@ function handleGo() {
           <p className="mt-2 text-sm text-slate-500">
             {filtersChanged
               ? 'Click GO to load students for the selected class.'
-              : 'Choose Branch, Year, and Section, then click GO.'}
+              : 'Choose Branch, Year, Section, and College, then click GO.'}
           </p>
         </div>
       ) : (
@@ -1074,7 +1108,7 @@ function handleGo() {
 
               <p className="mt-1 text-xs text-slate-500">
                 {applied.branch} / Year {applied.year} /
-                Section {applied.section}
+                Section {applied.section} / {applied.college}
               </p>
             </div>
 

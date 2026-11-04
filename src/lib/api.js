@@ -283,26 +283,70 @@ export const api = {
   // Get students
   // getStudentsList: () =>
   //   request('/students'),
+//Students
 
-  getStudentsList: (branch, year, section) => {
-    const params = new URLSearchParams({
-      branch: String(branch),
-      year: String(year),
-      section: String(section),
-    });
+  getStudentsList: (
+    branch,
+    year,
+    section,
+    college
+  ) => {
+    const params = new URLSearchParams();
+
+    if (branch && branch !== 'ALL') {
+      params.set('branch', String(branch));
+    }
+
+    if (year && year !== 'ALL') {
+      params.set('year', String(year));
+    }
+
+    if (section && section !== 'ALL') {
+      params.set('section', String(section));
+    }
+
+    if (college && college !== 'ALL') {
+      params.set('college', String(college));
+    }
+
+    const query = params.toString();
 
     return request(
-      `/students/activities?${params.toString()}`
+      `/students/activities${query ? `?${query}` : ''}`
     );
   },
-  getStudentsByFilter: (branch, year, section) =>
-    request(
-      `/students?${new URLSearchParams({
-        ...(branch ? { branch } : {}),
-        ...(year ? { year } : {}),
-        ...(section ? { section } : {}),
-      })}`
-    ),
+
+  getStudentsByFilter: (
+    branch,
+    year,
+    section,
+    college
+  ) => {
+    const params = new URLSearchParams();
+
+    if (branch && branch !== 'ALL') {
+      params.set('branch', String(branch));
+    }
+
+    if (year && year !== 'ALL') {
+      params.set('year', String(year));
+    }
+
+    if (section && section !== 'ALL') {
+      params.set('section', String(section));
+    }
+
+    if (college && college !== 'ALL') {
+      params.set('college', String(college));
+    }
+
+    const query = params.toString();
+
+    return request(
+      `/students${query ? `?${query}` : ''}`
+    );
+  },
+
 
   // Create one or multiple students
   createStudentsBulk: (students) =>

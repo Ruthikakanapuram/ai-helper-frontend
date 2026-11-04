@@ -1,7 +1,8 @@
 const branches = ['CSE', 'ECE', 'IT'];
 const sections = ['A', 'B', 'C'];
-export const students = Array.from({ length: 60 }, (_, i) => ({ id: `s${i + 1}`, name: ['Aarav', 'Diya', 'Rohan', 'Meera', 'Vikram', 'Ananya', 'Kiran', 'Nisha', 'Aditya', 'Priya'][i % 10] + ' ' + ['Sharma', 'Reddy', 'Rao', 'Nair', 'Patel', 'Kumar'][Math.floor(i / 10) % 6], rollNumber: `25BD1A${String(i + 1).padStart(4, '0')}`, branch: branches[i % 3], year: Math.floor(i / 15) % 4 + 1, section: sections[Math.floor(i / 3) % 3] }));
-export const users = [{ id: 't1', name: 'Dr. Kavya Rao', username: 'teacher', role: 'TEACHER' }, { id: 'admin1', name: 'System Admin', username: 'admin', role: 'ADMIN' }, { id: 't2', name: 'Prof. Anil Kumar', username: 'teacher2', role: 'TEACHER' }, ...students.map((s, i) => ({ id: s.id, name: s.name, username: i === 0 ? 'student' : `student${i + 1}`, role: 'STUDENT', rollNumber: s.rollNumber }))];
+const colleges = ['KMIT', 'NGIT', 'KMEC', 'KMCE'];
+export const students = Array.from({ length: 60 }, (_, i) => ({ id: `s${i + 1}`, name: ['Aarav', 'Diya', 'Rohan', 'Meera', 'Vikram', 'Ananya', 'Kiran', 'Nisha', 'Aditya', 'Priya'][i % 10] + ' ' + ['Sharma', 'Reddy', 'Rao', 'Nair', 'Patel', 'Kumar'][Math.floor(i / 10) % 6], rollNumber: `25BD1A${String(i + 1).padStart(4, '0')}`, branch: branches[i % 3], year: Math.floor(i / 15) % 4 + 1, section: sections[Math.floor(i / 3) % 3], college: colleges[i % colleges.length] }));
+export const users = [{ id: 't1', name: 'Dr. Kavya Rao', username: 'teacher', role: 'TEACHER' }, { id: 'admin1', name: 'System Admin', username: 'admin', role: 'ADMIN' }, { id: 't2', name: 'Prof. Anil Kumar', username: 'teacher2', role: 'TEACHER' }, ...students.map((s, i) => ({ id: s.id, name: s.name, username: i === 0 ? 'student' : `student${i + 1}`, role: 'STUDENT', rollNumber: s.rollNumber, college: s.college }))];
 const now = Date.now();
 const iso = (delta) => new Date(now + delta).toISOString();
 export const activities = [

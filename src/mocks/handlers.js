@@ -22,15 +22,15 @@ export const handlers = [
     http.post('/api/auth/login', async ({ request }) => { await delay(220); const b = await request.json(); const user = db.users.find(u => u.username.toLowerCase() === b.username.toLowerCase()); return user && b.password === 'password123' ? ok(user) : fail('Incorrect username or password', 401); }),
     http.get('/api/activities', () => ok(db.activities)),
     http.get('/api/activities/:id', ({ params }) => { const a = findActivity(String(params.id)); return a ? ok(a) : fail('Activity not found', 404); }),
-    http.post('/api/activities', async ({ request }) => { await delay(400); const b = await request.json(); if (!b.name || !b.topic || !b.studentIds?.length)
-        return fail('Missing required fields'); const a = { ...b, id: makeId(), status: 'DRAFT', createdAt: new Date().toISOString(), teacherId: 't1' }; db.activities.unshift(a); return ok(a); }),
+    http.post('/api/activities', async ({ request }) => { await delay(400); const b = await request.json(); if (!b.name || !b.studentIds?.length)
+        return fail('Missing required fields'); const a = { ...b, topic: b.topic || b.name, id: makeId(), status: b.status || 'DRAFT', createdAt: new Date().toISOString(), teacherId: 't1' }; db.activities.unshift(a); return ok(a); }),
     http.post('/api/activities/:id/start', ({ params }) => { const a = findActivity(String(params.id)); if (!a)
         return fail('Not found', 404); if (a.status !== 'DRAFT')
         return fail('Only draft activities can start', 409); a.status = 'ACTIVE'; a.startedAt = new Date().toISOString(); emit({ type: 'activity.started', activityId: a.id, payload: a }); return ok(a); }),
     http.post('/api/activities/:id/stop', ({ params }) => { const a = findActivity(String(params.id)); if (!a)
         return fail('Not found', 404); if (a.status !== 'ACTIVE')
         return fail('Only active activities can stop', 409); a.status = 'STOPPED'; a.stoppedAt = new Date().toISOString(); emit({ type: 'activity.stopped', activityId: a.id, payload: a }); return ok(a); }),
-    http.get('/api/students', ({ request }) => { const q = new URL(request.url).searchParams; return ok(db.students.filter(s => (!q.get('branch') || s.branch === q.get('branch')) && (!q.get('year') || String(s.year) === q.get('year')) && (!q.get('section') || s.section === q.get('section')))); }),
+    http.get('/api/students', ({ request }) => { const q = new URL(request.url).searchParams; return ok(db.students.filter(s => (!q.get('branch') || s.branch === q.get('branch')) && (!q.get('year') || String(s.year) === q.get('year')) && (!q.get('section') || s.section === q.get('section')) && (!q.get('college') || s.college === q.get('college')))); }),
     http.get('/api/activities/:a/sessions/:s', ({ params }) => { const a = String(params.a), s = String(params.s); return ok({ session: getSession(a, s) || null, messages: db.messages.filter(m => m.activityId === a && m.studentId === s) }); }),
     http.post('/api/activities/:a/sessions', async ({ params, request }) => { const a = findActivity(String(params.a)); const { studentId } = await request.json(); if (!a || !a.studentIds.includes(studentId))
         return fail('Not assigned', 403); if (a.status !== 'ACTIVE' || stopped(a))
