@@ -809,7 +809,7 @@ export function StudentChat() {
           <div className="min-w-0">
             <h1 className="truncate text-sm font-bold text-slate-900 dark:text-white sm:text-base" title={activity.title}>{activity.title}</h1>
             {activity.filePath ? (
-              <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">(1) attachment available</p>
+              <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">(1) Attachment available</p>
             ) : (
               <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{activity.topic}</p>
             )}

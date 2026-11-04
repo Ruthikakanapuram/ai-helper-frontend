@@ -950,7 +950,7 @@ export function TeacherStudentChatHistory() {
       '/teacher/students/$studentId/activities/$activityId/history',
   });
 
-  const { branch, year, section } = useSearch({
+  const { branch, year, section, college } = useSearch({
     from:
       '/teacher/students/$studentId/activities/$activityId/history',
   });
@@ -1019,7 +1019,7 @@ export function TeacherStudentChatHistory() {
         <Link
           to="/teacher/students/$studentId/activities"
           params={{ studentId: String(studentId) }}
-          search={{ branch, year, section }}
+          search={{ branch, year, section, college }}
           className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:underline"
         >
           <ArrowLeft size={16} />
@@ -1046,6 +1046,7 @@ export function TeacherStudentChatHistory() {
             branch,
             year,
             section,
+            college
           }}
           aria-label="Back to student activities"
           className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-slate-800"

@@ -113,15 +113,16 @@ export function TeacherStudentActivities() {
     const branch = String(searchParams?.branch ?? '');
     const year = String(searchParams?.year ?? '');
     const section = String(searchParams?.section ?? '');
+    const college = String(searchParams?.college ?? '');
     const [searchText, setSearchText] = useState('');
     const [openActivityId, setOpenActivityId] = useState(null);
-    const validClass = Boolean(branch && year && section);
+    const validClass = Boolean(branch && year && section && college);
 
     // Re-fetches the teacher-authorized enrollment list, so refresh/direct navigation works.
     const studentsQuery = useQuery({
-        queryKey: ['teacher', 'students-list', branch, year, section],
-        queryFn: () => api.getStudentsList(branch, year, section),
-        enabled: validClass,
+        queryKey: ['teacher', 'students-list', branch, year, section,college,],
+        queryFn: () => api.getStudentsList(branch, year, section, college,),
+        enabled:validClass,
         staleTime: 30_000,
     });
 
@@ -147,6 +148,7 @@ export function TeacherStudentActivities() {
     branch,
     year,
     section,
+    college,
   }}
   className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-blue-600"
 >
@@ -213,6 +215,7 @@ export function TeacherStudentActivities() {
     branch,
     year,
     section,
+    college,
   }}
   className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300"
 >
