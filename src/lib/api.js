@@ -312,7 +312,7 @@ export const api = {
     const query = params.toString();
 
     return request(
-      `/students/activities${query ? `?${query}` : ''}`
+      `/students/with-activities${query ? `?${query}` : ''}`
     );
   },
 
