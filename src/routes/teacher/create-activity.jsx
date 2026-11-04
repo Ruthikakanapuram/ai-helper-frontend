@@ -569,7 +569,7 @@ export function CreateActivity() {
                   {mutation.isPending ? <Spinner /> : <Check size={17} />}
                   {mutation.isPending ? 'Saving...' : 'Save Activity'}
                 </button>
-                <select
+                {/* <select
                   aria-label="Save activity action"
                   value={values.status || 'DRAFT'}
                   onChange={(event) => form.setFieldValue('status', event.target.value)}
@@ -577,7 +577,7 @@ export function CreateActivity() {
                 >
                   <option value="DRAFT">Save as Draft</option>
                   <option value="PUBLISHED">Save & Publish</option>
-                </select>
+                </select> */}
               </div>
             </div>
           );
