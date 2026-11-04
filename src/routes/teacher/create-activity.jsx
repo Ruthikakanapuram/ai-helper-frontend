@@ -375,7 +375,7 @@ const DURATIONS = [5,10,15,20, 25, 30, 35, 40, 45, 50, 55, 60];
 const BRANCHES = ['CSE', 'AIML', 'DS'];
 const YEARS = [1, 2, 3, 4];
 const SECTIONS = ['A', 'B', 'C', 'D'];
-
+const COLLEGES = ['KMIT', 'NGIT', 'KMEC', 'KMCE'];
 function todayLocal() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -405,6 +405,7 @@ export function CreateActivity() {
   const [branch, setBranch] = useState('');
   const [year, setYear] = useState('');
   const [section, setSection] = useState('');
+  const [college, setCollege] = useState('');
   const [appliedFilters, setAppliedFilters] = useState(null);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState([]);
@@ -412,7 +413,8 @@ export function CreateActivity() {
   const filtersChanged = Boolean(appliedFilters) && (
     appliedFilters.branch !== branch ||
     appliedFilters.year !== year ||
-    appliedFilters.section !== section
+    appliedFilters.section !== section ||
+    appliedFilters.college !== college
   );
   const showStudents = Boolean(appliedFilters) && !filtersChanged;
 
@@ -421,9 +423,10 @@ export function CreateActivity() {
       appliedFilters?.branch ?? '',
       appliedFilters?.year ?? '',
       appliedFilters?.section ?? '',
+      appliedFilters?.college ?? '',
     ),
     queryFn: () => api.getStudentsByFilter(
-      appliedFilters.branch, appliedFilters.year, appliedFilters.section,
+      appliedFilters.branch, appliedFilters.year, appliedFilters.section, appliedFilters.college,
     ),
     enabled: showStudents,
     staleTime: 30_000,
@@ -441,10 +444,12 @@ export function CreateActivity() {
   const mutation = useMutation({
     mutationFn: (values) => api.createActivity({
       title: values.name.trim(),
+      topic: values.topic?.trim() || values.name.trim(),
       description: values.description?.trim() || '',
       duration: Number(values.duration),
       scheduledDate: values.scheduledDate,
-      studentIds: values.studentIds.map(Number),
+      studentIds: values.studentIds.map(String),
+      status: values.status || 'DRAFT',
     }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.activities });
@@ -458,12 +463,12 @@ export function CreateActivity() {
   const form = useForm({
     defaultValues: {
       name: '', description: '', duration: 20,
-      scheduledDate: todayLocal(), studentIds: [],
+      scheduledDate: todayLocal(), studentIds: [], status: 'DRAFT',
     },
     onSubmit: async ({ value }) => {
       const message = getValidationMessage(value, value.studentIds.length);
       if (message) { toast.error(message); return; }
-      await mutation.mutateAsync(value);
+      await mutation.mutateAsync({ ...value, status: value.status || 'DRAFT' });
     },
   });
 
@@ -481,12 +486,12 @@ export function CreateActivity() {
   }
 
   function applyFilters() {
-    if (!branch || !year || !section) {
-      toast.error('Please select Branch, Year, and Section before clicking GO.');
+    if (!branch || !year || !section || !college) {
+      toast.error('Please select Branch, Year, Section, and College before clicking GO.');
       return;
     }
     setSearch('');
-    setAppliedFilters({ branch, year, section });
+    setAppliedFilters({ branch, year, section, college });
   }
 
   function cancel() {
@@ -641,10 +646,10 @@ export function CreateActivity() {
               <Users size={15} /> {selected.length} selected
             </span>
           </div>
-          <p className="muted mt-1 text-xs">Choose Branch, Year, and Section, then click GO to load students.</p>
+          <p className="muted mt-1 text-xs">Choose Branch, Year, Section, and College, then click GO to load students.</p>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] lg:items-end">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] lg:items-end">
           <div>
             <label htmlFor="filter-branch" className="field-label">Branch</label>
             <select id="filter-branch" className="input w-full" value={branch} onChange={(event) => setBranch(event.target.value)}>
@@ -666,7 +671,14 @@ export function CreateActivity() {
               {SECTIONS.map((value) => <option key={value} value={value}>Section {value}</option>)}
             </select>
           </div>
-          <button type="button" onClick={applyFilters} disabled={!branch || !year || !section}
+          <div>
+            <label htmlFor="filter-college" className="field-label">College</label>
+            <select id="filter-college" className="input w-full" value={college} onChange={(event) => setCollege(event.target.value)}>
+              <option value="">Select college</option>
+              {COLLEGES.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </div>
+          <button type="button" onClick={applyFilters} disabled={!branch || !year || !section || !college}
             className="btn-primary flex w-full items-center justify-center gap-2 sm:col-span-2 lg:col-span-1 lg:w-24">
             <Filter size={16} /> GO
           </button>
@@ -730,12 +742,23 @@ export function CreateActivity() {
               <button type="button" className="btn-outline min-w-[110px] px-5" onClick={cancel} disabled={mutation.isPending}>
                 Cancel
               </button>
-              <button type="submit" disabled={!valid || mutation.isPending}
-                className="btn-primary inline-flex min-w-[150px] items-center justify-center gap-2 px-5 disabled:cursor-not-allowed disabled:opacity-50"
-                title={!valid ? getValidationMessage(values, selected.length) : 'Save activity'}>
-                {mutation.isPending ? <Spinner /> : <Check size={17} />}
-                {mutation.isPending ? 'Saving...' : 'Save Activity'}
-              </button>
+              <div className="flex items-center overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                <button type="submit" disabled={!valid || mutation.isPending}
+                  className="btn-primary inline-flex min-w-[150px] items-center justify-center gap-2 rounded-r-none border-r border-blue-500/70 px-5 disabled:cursor-not-allowed disabled:opacity-50"
+                  title={!valid ? getValidationMessage(values, selected.length) : 'Save activity'}>
+                  {mutation.isPending ? <Spinner /> : <Check size={17} />}
+                  {mutation.isPending ? 'Saving...' : 'Save Activity'}
+                </button>
+                <select
+                  aria-label="Save activity action"
+                  value={values.status || 'DRAFT'}
+                  onChange={(event) => form.setFieldValue('status', event.target.value)}
+                  className="h-[42px] min-w-[150px] border-0 bg-transparent px-3 text-sm font-medium text-slate-700 outline-none transition hover:bg-slate-50 focus:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:bg-slate-800"
+                >
+                  <option value="DRAFT">Save as Draft</option>
+                  <option value="PUBLISHED">Save & Publish</option>
+                </select>
+              </div>
             </div>
           );
         }}

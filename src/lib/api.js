@@ -182,23 +182,25 @@ stopActivity: (id) =>
   // getStudentsList: () =>
   //   request('/students'),
   
-  getStudentsList: (branch, year, section) => {
+  getStudentsList: (branch, year, section, college) => {
   const params = new URLSearchParams({
-    branch: String(branch),
-    year: String(year),
-    section: String(section),
+    ...(branch ? { branch: String(branch) } : {}),
+    ...(year ? { year: String(year) } : {}),
+    ...(section ? { section: String(section) } : {}),
+    ...(college ? { college: String(college) } : {}),
   });
 
   return request(
     `/students/activities?${params.toString()}`
   );
 },
-   getStudentsByFilter: (branch, year, section) =>
+   getStudentsByFilter: (branch, year, section, college) =>
     request(
       `/students?${new URLSearchParams({
         ...(branch ? { branch } : {}),
         ...(year ? { year } : {}),
         ...(section ? { section } : {}),
+        ...(college ? { college } : {}),
       })}`
     ),
 

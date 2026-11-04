@@ -3,8 +3,9 @@
 export const BRANCHES = ['CSE', 'AIML', 'DS'];
 export const YEARS = ['1', '2', '3', '4'];
 export const SECTIONS = ['A', 'B', 'C'];
-export const FIELDS = ['username','fullName','rollNumber','year','branch','section'];
-export const emptyStudent = () => ({ username:'',fullName:'',rollNumber:'',year:'',branch:'',section:'' });
+export const COLLEGES = ['KMIT', 'NGIT', 'KMEC', 'KMCE'];
+export const FIELDS = ['username','fullName','rollNumber','year','branch','section','college'];
+export const emptyStudent = () => ({ username:'',fullName:'',rollNumber:'',year:'',branch:'',section:'',college:'' });
 export function validateStudent(s) {
   const errors = {};
   if (!s.username.trim()) errors.username = 'Username is required';
@@ -12,6 +13,7 @@ export function validateStudent(s) {
   if (!s.year) errors.year = 'Year is required';
   if (!s.branch) errors.branch = 'Branch is required';
   if (!s.section) errors.section = 'Section is required';
+  if (!s.college) errors.college = 'College is required';
   if (s.username.length > 100) errors.username = 'Username is too long';
   if (s.fullName.length > 150) errors.fullName = 'Maximum 150 characters';
   if (s.rollNumber.length > 50) errors.rollNumber = 'Maximum 50 characters';
@@ -20,7 +22,7 @@ export function validateStudent(s) {
 export function cleanStudent(s) {
   return {username:s.username.trim(),fullName:s.fullName.trim(),
     ...(s.rollNumber.trim() ? {rollNumber:s.rollNumber.trim()} : {}),
-    year:s.year,branch:s.branch,section:s.section};
+    year:s.year,branch:s.branch,section:s.section,college:s.college};
 }
 export function parseCsv(raw) {
   // RFC4180-style quoted fields, escaped quotes, CRLF and newlines inside quotes.
@@ -47,4 +49,4 @@ export function parseCsv(raw) {
   if(values.length>500)throw new Error('Maximum 500 students per import');
   return values;
 }
-export function csvTemplate() {return `${FIELDS.join(',')}\nstudent101,Example Student,25BD1A0101,1,CSE,A\n`;}
+export function csvTemplate() {return `${FIELDS.join(',')}\nstudent101,Example Student,25BD1A0101,1,CSE,A,KMIT\n`;}
